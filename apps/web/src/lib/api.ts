@@ -27,6 +27,12 @@ export interface SegmentInfo {
   stravaSegmentId: number;
   distance: number;
   elevationGain: number;
+  rawStravaMetadata?: {
+    map?: { polyline?: string };
+    start_latlng?: [number, number];
+    end_latlng?: [number, number];
+    [key: string]: unknown;
+  };
 }
 
 export interface SegmentsResponse {
@@ -39,7 +45,22 @@ export function getSegments(): Promise<SegmentsResponse> {
   return apiFetch('/segments');
 }
 
-export function getLeaderboard(segmentId: string, category: LeaderboardCategory = LeaderboardCategory.OVERALL) {
+export interface LeaderboardEntry {
+  racerId: string;
+  rank: number;
+  racerName: string;
+  profileImageUrl: string;
+  elapsedTimeSeconds: number;
+  achievedAt: string;
+}
+
+export interface LeaderboardData {
+  segmentName: string;
+  category: string;
+  entries: LeaderboardEntry[];
+}
+
+export function getLeaderboard(segmentId: string, category: LeaderboardCategory = LeaderboardCategory.OVERALL): Promise<LeaderboardData> {
   return apiFetch(`/leaderboard/${segmentId}?category=${category}`);
 }
 
