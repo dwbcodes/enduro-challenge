@@ -16,3 +16,8 @@ coverage/
 !next-env.d.ts
 packages/*/src/**/*.js
 
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key

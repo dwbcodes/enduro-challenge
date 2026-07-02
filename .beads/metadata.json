@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "enduro_challenge",
+  "project_id": "6ef40631-5d26-45e0-9bcb-b6287be57517"
+}

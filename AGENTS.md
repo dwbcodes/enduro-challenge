@@ -16,6 +16,30 @@ infra/                   AWS CDK — 3 stacks: EnduroDatabase, EnduroApi, Enduro
 
 ---
 
+## API-First Development Policy
+
+This project is API-first. Every feature that changes behavior must start from the HTTP API contract before frontend or implementation details.
+
+**Required for API changes:**
+- Define the endpoint, method, auth requirement, request schema, response schema, and error responses first.
+- Update the canonical OpenAPI spec in `docs/openapi.json` in the same change set as the code.
+- Mirror the spec to `apps/web/public/admin/openapi.json` so the static admin UI can render and download it.
+- Keep the admin API docs view in `apps/web/src/app/admin/page.tsx` aligned with the OpenAPI spec. The admin section is where operators inspect and download the API contract.
+- Frontend code must call the CloudFront `/api` path through `apps/web/src/lib/api.ts`; do not point browser code at the raw API Gateway URL and do not add server-side Next.js handlers because the site is statically exported.
+
+**DDD and serverless boundaries are mandatory:**
+- Domain owns entities, value objects, enums, and repository interfaces only.
+- Application owns use cases, commands, and queries only.
+- Infrastructure owns DynamoDB, Strava, and other external adapters.
+- Functions own Lambda/API Gateway request handling and dependency wiring only.
+- AWS serverless services are the default platform: API Gateway for HTTP, Lambda for compute, DynamoDB for persistence, SQS/EventBridge for async work, SSM for config/secrets, and S3/CloudFront for the static frontend.
+- CloudFront owns the public web origin and proxies `/api/*` to API Gateway. API Gateway CORS and Lambda response CORS must allow only the configured CloudFront frontend URL.
+- CloudFront must cache safe public API reads (`/api/segments*`, `/api/leaderboard/*`, `/api/racers*`) with short TTLs to reduce API abuse. Admin, auth, webhook, and mutation endpoints must remain uncached.
+
+**Definition of done for API work:** code, tests, `docs/openapi.json`, frontend API client changes, and admin docs visibility are all updated together. A route or schema change without an OpenAPI update is incomplete.
+
+---
+
 ## Domain Layer (`packages/domain`)
 
 All business entities and repository interfaces live here. No AWS SDK, no HTTP clients.
@@ -189,3 +213,51 @@ NEXT_PUBLIC_SEGMENT_IDS              Comma-separated segment UUIDs (internal, no
 - The `leaderboard` table entry uses `RACER#<racerId>` as SK (stable), not the time — do not use time in the SK for leaderboard entries
 - `LeaderboardEntry.rank` is always `0` when stored; ranks are assigned on read by iterating the GSI2 query results in order
 - Static export means no server-side logic in Next.js — all dynamic behaviour must go through API Gateway
+
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
+## Beads Issue Tracker
+
+This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+### Quick Reference
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --claim  # Claim work
+bd close <id>         # Complete work
+```
+
+### Rules
+
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Run `bd prime` for detailed command reference and session close protocol
+- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+
+**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
+
+## Session Completion
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds
+<!-- END BEADS INTEGRATION -->
