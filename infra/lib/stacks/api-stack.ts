@@ -9,7 +9,7 @@ import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as path from 'path';
 import { Construct } from 'constructs';
-import { SSM_PREFIX } from '../config';
+import { SSM_PREFIX, PROJECT_ROOT } from '../config';
 
 interface ApiStackProps extends cdk.StackProps {
   table: dynamodb.Table;
@@ -67,7 +67,7 @@ export class ApiStack extends cdk.Stack {
       },
     };
 
-    const functionsRoot = path.join(__dirname, '../../../packages/functions/src');
+    const functionsRoot = path.join(PROJECT_ROOT, 'packages/functions/src');
 
     // --- Lambda: Strava Webhook ---
     const webhookFn = new lambdaNodejs.NodejsFunction(this, 'StravaWebhookFn', {

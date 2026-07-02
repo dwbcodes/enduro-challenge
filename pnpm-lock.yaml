@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      esbuild:
+        specifier: ^0.24.0
+        version: 0.24.2
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -53,8 +56,8 @@ importers:
         specifier: ^20.0.0
         version: 20.19.43
       aws-cdk:
-        specifier: ^2.130.0
-        version: 2.1128.1
+        specifier: ^2.1129.0
+        version: 2.1129.0
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
@@ -531,8 +534,8 @@ packages:
       - yaml
       - mime-types
 
-  aws-cdk@2.1128.1:
-    resolution: {integrity: sha512-y9OHn5/BOcIiq409vPvpypMIr7/8M1ScFe8IkFMSCN1/GI/5c73fQ4pfzNq+VDkj86T5zxs7BQ1qU2lQQytdXA==}
+  aws-cdk@2.1129.0:
+    resolution: {integrity: sha512-M0EWbjeKW+baUsirjtKuWh7w/9dPxF8taEi2hqo9ecCjGeQxV1dzyosJf+caR3Jh7dFyyT3J8zEtRb/cU971Rw==}
     engines: {node: '>= 18.0.0'}
     hasBin: true
 
@@ -1088,7 +1091,7 @@ snapshots:
       '@aws-cdk/cloud-assembly-schema': 54.6.0
       constructs: 10.6.0
 
-  aws-cdk@2.1128.1: {}
+  aws-cdk@2.1129.0: {}
 
   bowser@2.14.1: {}
 

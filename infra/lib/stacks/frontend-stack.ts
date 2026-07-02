@@ -5,6 +5,7 @@ import * as cloudfrontOrigins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as path from 'path';
 import { Construct } from 'constructs';
+import { PROJECT_ROOT } from '../config';
 
 export class FrontendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -28,7 +29,9 @@ export class FrontendStack extends cdk.Stack {
       },
       defaultRootObject: 'index.html',
       errorResponses: [
-        // SPA fallback — all 404s return index.html
+        // SPA fallback for private S3 origins: missing deep-link objects surface as 403s.
+        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
+        // SPA fallback for ordinary not-found responses.
         { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
       ],
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
@@ -36,7 +39,7 @@ export class FrontendStack extends cdk.Stack {
 
     // Deploy static build — run `pnpm dev build` in apps/web first
     new s3deploy.BucketDeployment(this, 'SiteDeploy', {
-      sources: [s3deploy.Source.asset(path.join(__dirname, '../../../apps/web/out'))],
+      sources: [s3deploy.Source.asset(path.join(PROJECT_ROOT, 'apps/web/out'))],
       destinationBucket: siteBucket,
       distribution,
       distributionPaths: ['/*'],

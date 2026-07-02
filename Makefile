@@ -4,6 +4,9 @@ SHELL := /bin/bash
 # Source nvm so we get the right Node version (from .nvmrc) and pnpm
 NVM_INIT := source "$$NVM_DIR/nvm.sh" --no-use && nvm use --silent
 
+# Run the workspace-local CDK CLI (not npx, which can download a different version)
+CDK := pnpm --filter infra exec cdk
+
 # SSM namespace — all config lives under this prefix in AWS Parameter Store
 SSM_NAMESPACE ?= /enduro-challenge
 
@@ -36,19 +39,19 @@ dev: install ## Start the web app dev server
 ## ── AWS Deploy ───────────────────────────────────────────────────────────────
 
 synth: build ## Synthesize CDK stacks
-	$(NVM_INIT) && cd infra && npx cdk synth
+	$(NVM_INIT) && $(CDK) synth
 
 diff: build ## Show CDK diff
-	$(NVM_INIT) && cd infra && npx cdk diff
+	$(NVM_INIT) && $(CDK) diff
 
 deploy: build ## Deploy all CDK stacks
-	$(NVM_INIT) && cd infra && npx cdk deploy --all --require-approval never
+	$(NVM_INIT) && $(CDK) deploy --all --require-approval never
 
 deploy-db: build ## Deploy the database stack
-	$(NVM_INIT) && cd infra && npx cdk deploy EnduroDatabase --require-approval never
+	$(NVM_INIT) && $(CDK) deploy EnduroDatabase --require-approval never
 
 deploy-api: build ## Deploy the API stack
-	$(NVM_INIT) && cd infra && npx cdk deploy EnduroApi --require-approval never
+	$(NVM_INIT) && $(CDK) deploy EnduroApi --require-approval never
 
 deploy-frontend: config build ## Deploy the frontend stack (fetches config first)
-	$(NVM_INIT) && cd infra && npx cdk deploy EnduroFrontend --require-approval never
+	$(NVM_INIT) && $(CDK) deploy EnduroFrontend --require-approval never

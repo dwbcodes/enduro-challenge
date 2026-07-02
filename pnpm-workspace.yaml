@@ -2,5 +2,7 @@ packages:
   - 'packages/*'
   - 'apps/*'
   - 'infra'
-onlyBuiltDependencies:
-  - esbuild
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - aws-cdk@2.1129.0
