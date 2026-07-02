@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.next/
+out/
+cdk.out/
+*.js.map
+*.d.ts.map
+.env
+.env.local
+.DS_Store
+.turbo/
+coverage/
+
+# TypeScript build output that may land outside dist/
+*.d.ts
+!next-env.d.ts
+packages/*/src/**/*.js
+
