@@ -5,14 +5,18 @@ import * as lambdaNodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigatewayv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as path from 'path';
 import { Construct } from 'constructs';
 import { SSM_PREFIX, PROJECT_ROOT } from '../config';
+import { SsmJsonWriter } from '../constructs/secret-writer';
 
 interface ApiStackProps extends cdk.StackProps {
   table: dynamodb.Table;
+  usersTable: dynamodb.Table;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -21,15 +25,13 @@ export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    const { table } = props;
+    const { table, usersTable } = props;
 
-    // --- SSM Parameters (String type, created before first deploy) ---
-    const stravaClientId = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/client-id`);
-    const stravaClientSecret = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/client-secret`);
-    const stravaWebhookVerifyToken = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/webhook-verify-token`);
-    const jwtSecret = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/jwt-secret`);
-    const frontendUrl = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/frontend-url`);
-    const adminAthleteIds = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/admin-athlete-ids`);
+    // --- SSM JSON parameters ---
+    const stravaConfig = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/strava`);
+    const awsConfig = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/aws`);
+    const awsConfigLookup = ssm.StringParameter.valueFromLookup(this, `${SSM_PREFIX}/aws`);
+    const frontendUrl = readFrontendUrl(awsConfigLookup);
 
     // --- SQS: Activity processing queue ---
     const activityDlq = new sqs.Queue(this, 'ActivityDLQ', {
@@ -44,13 +46,12 @@ export class ApiStack extends cdk.Stack {
     });
 
     // --- Shared Lambda environment ---
+    // Lambdas parse the JSON env vars at runtime
     const commonEnv: Record<string, string> = {
       TABLE_NAME: table.tableName,
-      STRAVA_CLIENT_ID: stravaClientId,
-      STRAVA_CLIENT_SECRET: stravaClientSecret,
-      JWT_SECRET: jwtSecret,
-      FRONTEND_URL: frontendUrl,
-      ADMIN_ATHLETE_IDS: adminAthleteIds,
+      USERS_TABLE_NAME: usersTable.tableName,
+      STRAVA_CONFIG: stravaConfig,
+      AWS_CONFIG: awsConfig,
       NODE_OPTIONS: '--enable-source-maps',
     };
 
@@ -76,7 +77,6 @@ export class ApiStack extends cdk.Stack {
       environment: {
         ...commonEnv,
         ACTIVITY_QUEUE_URL: activityQueue.queueUrl,
-        STRAVA_WEBHOOK_VERIFY_TOKEN: stravaWebhookVerifyToken,
       },
     });
     table.grantReadWriteData(webhookFn);
@@ -89,6 +89,7 @@ export class ApiStack extends cdk.Stack {
       environment: commonEnv,
     });
     table.grantReadWriteData(oauthFn);
+    usersTable.grantReadWriteData(oauthFn);
 
     // --- Lambda: Process Activity (SQS triggered) ---
     const processActivityFn = new lambdaNodejs.NodejsFunction(this, 'ProcessActivityFn', {
@@ -118,6 +119,23 @@ export class ApiStack extends cdk.Stack {
     });
     table.grantReadData(segmentsFn);
 
+    // --- Lambda: Get Racers (public) ---
+    const racersFn = new lambdaNodejs.NodejsFunction(this, 'GetRacersFn', {
+      ...functionDefaults,
+      entry: path.join(functionsRoot, 'get-racers/handler.ts'),
+      environment: commonEnv,
+    });
+    table.grantReadData(racersFn);
+    usersTable.grantReadData(racersFn);
+
+    // --- Lambda: Get Challenges (public) ---
+    const challengesFn = new lambdaNodejs.NodejsFunction(this, 'GetChallengesFn', {
+      ...functionDefaults,
+      entry: path.join(functionsRoot, 'get-challenges/handler.ts'),
+      environment: commonEnv,
+    });
+    table.grantReadData(challengesFn);
+
     // --- Lambda: Admin ---
     const adminFn = new lambdaNodejs.NodejsFunction(this, 'AdminFn', {
       ...functionDefaults,
@@ -125,6 +143,36 @@ export class ApiStack extends cdk.Stack {
       environment: commonEnv,
     });
     table.grantReadWriteData(adminFn);
+
+    // --- Lambda: Cleanup Strava Connections (DynamoDB stream) ---
+    const cleanupStravaConnectionsFn = new lambdaNodejs.NodejsFunction(this, 'CleanupStravaConnectionsFn', {
+      ...functionDefaults,
+      entry: path.join(functionsRoot, 'cleanup-strava-connections/handler.ts'),
+      environment: commonEnv,
+    });
+    table.grantReadWriteData(cleanupStravaConnectionsFn);
+    cleanupStravaConnectionsFn.addEventSource(
+      new lambdaEventSources.DynamoEventSource(table, {
+        startingPosition: lambda.StartingPosition.LATEST,
+        batchSize: 10,
+        retryAttempts: 2,
+      }),
+    );
+
+    // --- Lambda: Poll Segments (EventBridge hourly) ---
+    const pollSegmentsFn = new lambdaNodejs.NodejsFunction(this, 'PollSegmentsFn', {
+      ...functionDefaults,
+      timeout: cdk.Duration.minutes(5),
+      entry: path.join(functionsRoot, 'poll-segments/handler.ts'),
+      environment: commonEnv,
+    });
+    table.grantReadWriteData(pollSegmentsFn);
+    usersTable.grantReadData(pollSegmentsFn);
+
+    new events.Rule(this, 'PollSegmentsSchedule', {
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      targets: [new targets.LambdaFunction(pollSegmentsFn)],
+    });
 
     // --- HTTP API Gateway ---
     const api = new apigatewayv2.HttpApi(this, 'EnduroChallengeApi', {
@@ -135,10 +183,11 @@ export class ApiStack extends cdk.Stack {
           apigatewayv2.CorsHttpMethod.GET,
           apigatewayv2.CorsHttpMethod.POST,
           apigatewayv2.CorsHttpMethod.PUT,
+          apigatewayv2.CorsHttpMethod.PATCH,
           apigatewayv2.CorsHttpMethod.DELETE,
           apigatewayv2.CorsHttpMethod.OPTIONS,
         ],
-        allowOrigins: ['*'],
+        allowOrigins: [frontendUrl],
       },
     });
 
@@ -146,24 +195,36 @@ export class ApiStack extends cdk.Stack {
     const oauthIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('OAuthIntegration', oauthFn);
     const leaderboardIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('LeaderboardIntegration', leaderboardFn);
     const segmentsIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('SegmentsIntegration', segmentsFn);
+    const racersIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('RacersIntegration', racersFn);
+    const challengesIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('ChallengesIntegration', challengesFn);
     const adminIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('AdminIntegration', adminFn);
 
     api.addRoutes({ path: '/webhook', methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.POST], integration: webhookIntegration });
     api.addRoutes({ path: '/auth/callback', methods: [apigatewayv2.HttpMethod.GET], integration: oauthIntegration });
     api.addRoutes({ path: '/leaderboard/{segmentId}', methods: [apigatewayv2.HttpMethod.GET], integration: leaderboardIntegration });
     api.addRoutes({ path: '/segments', methods: [apigatewayv2.HttpMethod.GET], integration: segmentsIntegration });
+    api.addRoutes({ path: '/racers', methods: [apigatewayv2.HttpMethod.GET], integration: racersIntegration });
+    api.addRoutes({ path: '/challenges', methods: [apigatewayv2.HttpMethod.GET], integration: challengesIntegration });
     api.addRoutes({ path: '/admin/{proxy+}', methods: [apigatewayv2.HttpMethod.ANY], integration: adminIntegration });
 
     this.apiUrl = api.apiEndpoint;
 
-    // Write API URL to SSM so the frontend build can read it
-    new ssm.StringParameter(this, 'ApiUrlParam', {
-      parameterName: `${SSM_PREFIX}/api-url`,
-      stringValue: api.apiEndpoint,
-      description: 'Enduro Challenge API Gateway URL',
+    // Write API URL to the /aws SSM JSON param
+    new SsmJsonWriter(this, 'WriteAwsOutputs', {
+      parameterName: `${SSM_PREFIX}/aws`,
+      values: { apiUrl: api.apiEndpoint },
     });
 
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiEndpoint });
     new cdk.CfnOutput(this, 'ActivityQueueUrl', { value: activityQueue.queueUrl });
+  }
+}
+
+function readFrontendUrl(awsConfig: string): string {
+  try {
+    const parsed = JSON.parse(awsConfig) as { frontendUrl?: string };
+    return parsed.frontendUrl ?? 'https://d152gxg9dh92dl.cloudfront.net';
+  } catch {
+    return 'https://d152gxg9dh92dl.cloudfront.net';
   }
 }

@@ -1,0 +1,744 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SMM Enduro Challenge API",
+    "version": "0.1.0",
+    "description": "API contract for the Santa Monica Mountains Enduro Challenge serverless backend."
+  },
+  "servers": [
+    {
+      "url": "https://d152gxg9dh92dl.cloudfront.net/api",
+      "description": "CloudFront API entrypoint"
+    }
+  ],
+  "tags": [
+    { "name": "Public" },
+    { "name": "Registration" },
+    { "name": "Admin" },
+    { "name": "Strava" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "AdminBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "Challenge": {
+        "type": "object",
+        "required": ["id", "name", "description", "startDate", "endDate", "status", "segmentIds", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "startDate": { "type": "string", "format": "date-time" },
+          "endDate": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["DRAFT", "ACTIVE", "COMPLETED"] },
+          "segmentIds": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Segment": {
+        "type": "object",
+        "required": ["id", "stravaSegmentId", "name", "challengeId", "distance", "elevationGain", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "stravaSegmentId": { "type": "integer" },
+          "name": { "type": "string" },
+          "challengeId": { "type": "string", "format": "uuid" },
+          "distance": { "type": "number" },
+          "elevationGain": { "type": "number" },
+          "description": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Racer": {
+        "type": "object",
+        "required": ["id", "firstName", "lastName", "profileImageUrl", "category", "ageGroup", "sexCategory", "registeredAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "firstName": { "type": "string" },
+          "lastName": { "type": "string" },
+          "profileImageUrl": { "type": "string" },
+          "category": { "type": "string", "enum": ["MTB", "EBIKE", "BOTH"] },
+          "ageGroup": { "type": "string", "enum": ["U30", "30-39", "40-49", "50-59", "60+"] },
+          "sexCategory": { "type": "string", "enum": ["MALE", "FEMALE"] },
+          "registeredAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "LeaderboardEntry": {
+        "type": "object",
+        "required": ["racerId", "rank", "racerName", "profileImageUrl", "elapsedTimeSeconds", "achievedAt"],
+        "properties": {
+          "racerId": { "type": "string", "format": "uuid" },
+          "rank": { "type": "integer" },
+          "racerName": { "type": "string" },
+          "profileImageUrl": { "type": "string" },
+          "elapsedTimeSeconds": { "type": "integer" },
+          "achievedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateChallengeRequest": {
+        "type": "object",
+        "required": ["name", "description", "startDate", "endDate"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "startDate": { "type": "string", "format": "date" },
+          "endDate": { "type": "string", "format": "date" }
+        }
+      },
+      "AddSegmentRequest": {
+        "type": "object",
+        "required": ["challengeId", "stravaSegmentId", "name", "distance", "elevationGain"],
+        "properties": {
+          "challengeId": { "type": "string", "format": "uuid" },
+          "stravaSegmentId": { "type": "integer" },
+          "name": { "type": "string" },
+          "distance": { "type": "number" },
+          "elevationGain": { "type": "number" },
+          "description": { "type": "string" },
+          "city": { "type": "string" },
+          "state": { "type": "string" },
+          "country": { "type": "string" },
+          "averageGrade": { "type": "number" },
+          "maximumGrade": { "type": "number" },
+          "elevationHigh": { "type": "number" },
+          "elevationLow": { "type": "number" },
+          "climbCategory": { "type": "integer" },
+          "private": { "type": "boolean" },
+          "hazardous": { "type": "boolean" },
+          "starCount": { "type": "integer" },
+          "athleteCount": { "type": "integer" },
+          "effortCount": { "type": "integer" },
+          "rawStravaMetadata": { "type": "object" }
+        }
+      },
+      "UpdateRacerRequest": {
+        "type": "object",
+        "properties": {
+          "category": { "type": "string", "enum": ["MTB", "EBIKE", "BOTH"] },
+          "ageGroup": { "type": "string", "enum": ["U30", "30-39", "40-49", "50-59", "60+"] },
+          "sexCategory": { "type": "string", "enum": ["MALE", "FEMALE"] }
+        },
+        "minProperties": 1
+      },
+      "StravaSegmentMetadata": {
+        "type": "object",
+        "required": ["stravaSegmentId", "name", "distance", "elevationGain"],
+        "properties": {
+          "stravaSegmentId": { "type": "integer" },
+          "name": { "type": "string" },
+          "distance": { "type": "number" },
+          "elevationGain": { "type": "number" },
+          "city": { "type": "string" },
+          "state": { "type": "string" },
+          "country": { "type": "string" },
+          "averageGrade": { "type": "number" },
+          "maximumGrade": { "type": "number" },
+          "elevationHigh": { "type": "number" },
+          "elevationLow": { "type": "number" },
+          "climbCategory": { "type": "integer" },
+          "private": { "type": "boolean" },
+          "hazardous": { "type": "boolean" },
+          "starCount": { "type": "integer" },
+          "athleteCount": { "type": "integer" },
+          "effortCount": { "type": "integer" },
+          "rawStravaMetadata": { "type": "object" }
+        }
+      },
+      "ConnectedAthlete": {
+        "type": "object",
+        "required": ["racerId", "stravaAthleteId", "name", "profileImageUrl", "category", "ageGroup", "sexCategory"],
+        "properties": {
+          "racerId": { "type": "string", "format": "uuid" },
+          "stravaAthleteId": { "type": "integer" },
+          "name": { "type": "string" },
+          "profileImageUrl": { "type": "string" },
+          "category": { "type": "string", "enum": ["MTB", "EBIKE", "BOTH"] },
+          "ageGroup": { "type": "string", "enum": ["U30", "30-39", "40-49", "50-59", "60+"] },
+          "sexCategory": { "type": "string", "enum": ["MALE", "FEMALE"] }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid admin JWT.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Requested resource was not found.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Unexpected server error.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/segments": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "List segments for the active challenge",
+        "responses": {
+          "200": {
+            "description": "Active challenge segments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["challengeId", "challengeName", "segments"],
+                  "properties": {
+                    "challengeId": { "type": "string", "format": "uuid" },
+                    "challengeName": { "type": "string" },
+                    "segments": { "type": "array", "items": { "$ref": "#/components/schemas/Segment" } }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/racers": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "List racers for the active challenge",
+        "responses": {
+          "200": {
+            "description": "Registered racers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["challengeId", "racers"],
+                  "properties": {
+                    "challengeId": { "type": "string", "format": "uuid" },
+                    "racers": { "type": "array", "items": { "$ref": "#/components/schemas/Racer" } }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/leaderboard/{segmentId}": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "Get a segment leaderboard",
+        "parameters": [
+          {
+            "name": "segmentId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "OVERALL",
+              "enum": ["OVERALL", "MTB", "EBIKE", "AGE_U30", "AGE_30_39", "AGE_40_49", "AGE_50_59", "AGE_60_PLUS", "MALE", "FEMALE"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leaderboard entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["segmentName", "category", "entries"],
+                  "properties": {
+                    "segmentName": { "type": "string" },
+                    "category": { "type": "string" },
+                    "entries": { "type": "array", "items": { "$ref": "#/components/schemas/LeaderboardEntry" } }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing segment ID or invalid category.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "tags": ["Registration"],
+        "summary": "Handle Strava OAuth callback",
+        "parameters": [
+          { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirects to the frontend registration success page with a site JWT." },
+          "400": {
+            "description": "Missing or invalid callback parameters.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/webhook": {
+      "get": {
+        "tags": ["Strava"],
+        "summary": "Verify Strava webhook subscription",
+        "parameters": [
+          { "name": "hub.mode", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "hub.verify_token", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "hub.challenge", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook challenge response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["hub.challenge"],
+                  "properties": {
+                    "hub.challenge": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid verification token.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Strava"],
+        "summary": "Receive Strava webhook event",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["object_type", "aspect_type", "object_id", "owner_id"],
+                "properties": {
+                  "object_type": { "type": "string" },
+                  "aspect_type": { "type": "string" },
+                  "object_id": { "type": "integer" },
+                  "owner_id": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["received"],
+                  "properties": {
+                    "received": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/admin/challenges": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List challenges",
+        "security": [{ "AdminBearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "All challenges.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["challenges"],
+                  "properties": {
+                    "challenges": { "type": "array", "items": { "$ref": "#/components/schemas/Challenge" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Create a challenge",
+        "security": [{ "AdminBearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateChallengeRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Challenge created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id"],
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/admin/challenges/{challengeId}/activate": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Activate a challenge",
+        "security": [{ "AdminBearerAuth": [] }],
+        "parameters": [
+          { "name": "challengeId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Challenge activated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["activated"],
+                  "properties": {
+                    "activated": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/admin/segments": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List active challenge segments",
+        "security": [{ "AdminBearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Admin segment list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["segments"],
+                  "properties": {
+                    "segments": { "type": "array", "items": { "$ref": "#/components/schemas/Segment" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Add a segment to a challenge",
+        "security": [{ "AdminBearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AddSegmentRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Segment created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id"],
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/admin/segments/{segmentId}": {
+      "delete": {
+        "tags": ["Admin"],
+        "summary": "Delete a segment",
+        "security": [{ "AdminBearerAuth": [] }],
+        "parameters": [
+          { "name": "segmentId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Segment deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["deleted"],
+                  "properties": {
+                    "deleted": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/admin/racers": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List active challenge racers",
+        "security": [{ "AdminBearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Admin racer list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["racers"],
+                  "properties": {
+                    "racers": { "type": "array", "items": { "$ref": "#/components/schemas/Racer" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/admin/racers/{racerId}": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Update a racer's bike, sex, or age category",
+        "security": [{ "AdminBearerAuth": [] }],
+        "parameters": [
+          { "name": "racerId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateRacerRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated racer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["racer"],
+                  "properties": {
+                    "racer": { "$ref": "#/components/schemas/Racer" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid category value.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/admin/connected-athletes": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List racers with stored Strava tokens",
+        "security": [{ "AdminBearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Connected athletes consuming Strava athlete slots.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["athletes"],
+                  "properties": {
+                    "athletes": { "type": "array", "items": { "$ref": "#/components/schemas/ConnectedAthlete" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/admin/connected-athletes/cleanup": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Revoke and delete all stored Strava connections",
+        "security": [{ "AdminBearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Cleanup results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["results"],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["racerId", "status"],
+                        "properties": {
+                          "racerId": { "type": "string" },
+                          "stravaAthleteId": { "type": "integer" },
+                          "status": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/admin/strava/segments/{stravaSegmentId}": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Fetch Strava segment metadata for admin confirmation",
+        "security": [{ "AdminBearerAuth": [] }],
+        "parameters": [
+          { "name": "stravaSegmentId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Strava segment metadata.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StravaSegmentMetadata" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/admin/racers/{racerId}/deauthorize": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Revoke and delete a racer's stored Strava token",
+        "security": [{ "AdminBearerAuth": [] }],
+        "parameters": [
+          { "name": "racerId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Racer deauthorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["deauthorized", "racerId"],
+                  "properties": {
+                    "deauthorized": { "type": "boolean" },
+                    "racerId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  }
+}

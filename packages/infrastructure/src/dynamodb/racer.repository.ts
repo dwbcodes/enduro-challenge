@@ -1,5 +1,5 @@
 import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { Racer, RacerRepository, StravaToken, RacerCategory, AgeGroup } from '@enduro/domain';
+import { Racer, RacerRepository, StravaToken, RacerCategory, AgeGroup, SexCategory } from '@enduro/domain';
 import { TABLE_NAME, GSI1, keys } from './table';
 
 export class DynamoDBRacerRepository implements RacerRepository {
@@ -81,6 +81,28 @@ export class DynamoDBRacerRepository implements RacerRepository {
     };
   }
 
+  async findAllTokens(): Promise<StravaToken[]> {
+    const result = await this.client.send(new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: 'entityType = :et',
+      ExpressionAttributeValues: { ':et': 'STRAVA_TOKEN' },
+    }));
+    return (result.Items ?? []).map((item) => ({
+      racerId: item['racerId'] as string,
+      accessToken: item['accessToken'] as string,
+      refreshToken: item['refreshToken'] as string,
+      expiresAt: item['expiresAt'] as number,
+      scope: item['scope'] as string,
+    }));
+  }
+
+  async deleteToken(racerId: string): Promise<void> {
+    await this.client.send(new DeleteCommand({
+      TableName: TABLE_NAME,
+      Key: keys.racerToken(racerId),
+    }));
+  }
+
   async delete(id: string): Promise<void> {
     await this.client.send(new DeleteCommand({
       TableName: TABLE_NAME,
@@ -96,6 +118,7 @@ export class DynamoDBRacerRepository implements RacerRepository {
       profileImageUrl: item['profileImageUrl'] as string,
       category: item['category'] as RacerCategory,
       ageGroup: item['ageGroup'] as AgeGroup,
+      sexCategory: (item['sexCategory'] as SexCategory | undefined) ?? SexCategory.MALE,
       challengeId: item['challengeId'] as string,
       registeredAt: new Date(item['registeredAt'] as string),
       updatedAt: new Date(item['updatedAt'] as string),

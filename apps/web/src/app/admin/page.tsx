@@ -1,71 +1,736 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { adminGetRacers, adminGetSegments, adminCreateChallenge, adminActivateChallenge, adminAddSegment } from '@/lib/api';
+import { Suspense, useEffect, useState } from 'react';
+import { AgeGroup, RacerCategory, SexCategory } from '@enduro/domain';
+import { useSearchParams, useRouter } from 'next/navigation';
+import {
+  adminGetRacers, adminGetSegments, adminCreateChallenge, adminActivateChallenge, adminAddSegment,
+  adminGetConnectedAthletes, adminDeauthorizeRacer, ConnectedAthlete,
+  adminGetStravaSegment, adminCleanupConnectedAthletes, adminUpdateRacer,
+  adminGetChallenges, adminDeleteChallenge, adminGetAllSegments,
+  buildAdminLoginUrl, ChallengeInfo, SegmentInfo,
+} from '@/lib/api';
 
-export default function AdminPage() {
+type OpenApiOperation = {
+  summary?: string;
+  tags?: string[];
+  requestBody?: {
+    required?: boolean;
+  };
+};
+
+type OpenApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
+
+const OPENAPI_METHODS: OpenApiMethod[] = ['get', 'post', 'put', 'patch', 'delete'];
+
+type AdminRacer = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  profileImageUrl: string;
+  category: RacerCategory;
+  ageGroup: AgeGroup;
+  sexCategory: SexCategory;
+};
+
+function AdminContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [token, setToken] = useState('');
-  const [racers, setRacers] = useState<unknown[]>([]);
+  const [ready, setReady] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [racers, setRacers] = useState<AdminRacer[]>([]);
   const [segments, setSegments] = useState<unknown[]>([]);
-  const [challengeId, setChallengeId] = useState('');
+  const [connectedAthletes, setConnectedAthletes] = useState<ConnectedAthlete[]>([]);
+  const [deauthorizing, setDeauthorizing] = useState<string | null>(null);
+  const [showDocs, setShowDocs] = useState(false);
+  const [openApiJson, setOpenApiJson] = useState('');
+  const [openApiEndpoints, setOpenApiEndpoints] = useState<Array<{
+    method: string;
+    path: string;
+    summary: string;
+    tag: string;
+    requestBodyRequired: boolean;
+  }>>([]);
+  const [selectedEndpoint, setSelectedEndpoint] = useState<{
+    method: string;
+    path: string;
+    summary: string;
+    tag: string;
+    requestBodyRequired: boolean;
+  } | null>(null);
+  const [endpointParams, setEndpointParams] = useState<Record<string, string>>({});
+  const [endpointBody, setEndpointBody] = useState('{\n  \n}');
+  const [endpointStatus, setEndpointStatus] = useState('');
+  const [endpointResponse, setEndpointResponse] = useState('');
+  const [endpointRunning, setEndpointRunning] = useState(false);
+
+  // Create Challenge form state
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createDescription, setCreateDescription] = useState('');
+  const [createStartDate, setCreateStartDate] = useState('');
+  const [createEndDate, setCreateEndDate] = useState('');
+  const [createStatus, setCreateStatus] = useState('');
+
+  // Activate Challenge state
+  const [showActivateList, setShowActivateList] = useState(false);
+  const [draftChallenges, setDraftChallenges] = useState<ChallengeInfo[]>([]);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+
+  // Challenges list for management
+  const [challenges, setChallenges] = useState<ChallengeInfo[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Add Segment state
+  const [showAddSegment, setShowAddSegment] = useState(false);
+  const [segmentMode, setSegmentMode] = useState<'new' | 'reuse'>('new');
+  const [newStravaId, setNewStravaId] = useState('');
+  const [segmentChallengeId, setSegmentChallengeId] = useState('');
+  const [allSegments, setAllSegments] = useState<(SegmentInfo & { challengeName: string; challengeId: string })[]>([]);
+  const [reuseSegmentId, setReuseSegmentId] = useState('');
+  const [addSegmentStatus, setAddSegmentStatus] = useState('');
 
   useEffect(() => {
-    const t = localStorage.getItem('enduro_jwt') ?? '';
-    setToken(t);
-  }, []);
+    const urlToken = searchParams.get('token');
+    const error = searchParams.get('error');
+    if (urlToken) {
+      localStorage.setItem('enduro_jwt', urlToken);
+      setToken(urlToken);
+      router.replace('/admin');
+    } else if (error) {
+      setLoginError(error === 'unauthorized' ? 'Your Strava account is not authorized as an admin.' : error);
+      router.replace('/admin');
+    } else {
+      const stored = localStorage.getItem('enduro_jwt') ?? '';
+      setToken(stored);
+    }
+    setReady(true);
+  }, [searchParams, router]);
+
+  useEffect(() => {
+    if (!showDocs || openApiJson) return;
+    fetch('/admin/openapi.json')
+      .then((res) => {
+        if (!res.ok) throw new Error(`OpenAPI fetch failed: ${res.status}`);
+        return res.json();
+      })
+      .then((spec: { paths: Record<string, Record<string, OpenApiOperation>> }) => {
+        const endpoints = Object.entries(spec.paths).flatMap(([path, operations]) => (
+          OPENAPI_METHODS.flatMap((method) => {
+            const operation = operations[method];
+            if (!operation) return [];
+            return [{
+              method: method.toUpperCase(),
+              path,
+              summary: operation.summary ?? '',
+              tag: operation.tags?.[0] ?? 'API',
+              requestBodyRequired: Boolean(operation.requestBody?.required),
+            }];
+          })
+        ));
+        setOpenApiJson(JSON.stringify(spec, null, 2));
+        setOpenApiEndpoints(endpoints);
+        setSelectedEndpoint((current) => current ?? endpoints[0] ?? null);
+      })
+      .catch((err) => {
+        setOpenApiJson(JSON.stringify({ error: err instanceof Error ? err.message : 'Failed to load OpenAPI spec' }, null, 2));
+      });
+  }, [showDocs, openApiJson]);
 
   async function loadData() {
-    const [r, s] = await Promise.all([
-      adminGetRacers(token) as Promise<{ racers: unknown[] }>,
+    const [r, s, c, ch] = await Promise.all([
+      adminGetRacers(token) as Promise<{ racers: AdminRacer[] }>,
       adminGetSegments(token) as Promise<{ segments: unknown[] }>,
+      adminGetConnectedAthletes(token),
+      adminGetChallenges(token),
     ]);
     setRacers(r.racers);
     setSegments(s.segments);
+    setConnectedAthletes(c.athletes);
+    setChallenges(ch.challenges);
   }
 
-  async function createChallenge() {
-    const name = prompt('Challenge name?');
-    const startDate = prompt('Start date (YYYY-MM-DD)?');
-    const endDate = prompt('End date (YYYY-MM-DD)?');
-    const description = prompt('Description?') ?? '';
-    if (!name || !startDate || !endDate) return;
-    const res = await adminCreateChallenge(token, { name, description, startDate, endDate }) as { id: string };
-    setChallengeId(res.id);
-    alert(`Created challenge ${res.id}`);
+  async function handleDeauthorize(athlete: ConnectedAthlete) {
+    if (!confirm(`Deauthorize ${athlete.name} (Strava ID ${athlete.stravaAthleteId})? This will revoke their Strava connection.`)) return;
+    setDeauthorizing(athlete.racerId);
+    try {
+      await adminDeauthorizeRacer(token, athlete.racerId);
+      setConnectedAthletes((prev) => prev.filter((a) => a.racerId !== athlete.racerId));
+    } catch (err) {
+      alert(`Failed to deauthorize: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setDeauthorizing(null);
+    }
   }
 
-  async function activateChallenge() {
-    const id = challengeId || prompt('Challenge ID?');
-    if (!id) return;
-    await adminActivateChallenge(token, id);
-    alert('Activated!');
+  async function cleanupConnectedAthletes() {
+    if (!confirm('Remove all stored Strava connections, including admin connections?')) return;
+    await adminCleanupConnectedAthletes(token);
+    await loadData();
   }
 
-  async function addSegment() {
-    const stravaSegmentId = Number(prompt('Strava Segment ID?'));
-    const name = prompt('Segment name?');
-    const distance = Number(prompt('Distance (metres)?'));
-    const elevationGain = Number(prompt('Elevation gain (metres)?'));
-    const challengeIdInput = challengeId || prompt('Challenge ID?');
-    if (!stravaSegmentId || !name || !challengeIdInput) return;
-    await adminAddSegment(token, { stravaSegmentId, name, distance, elevationGain, challengeId: challengeIdInput });
-    alert('Segment added!');
-    loadData();
+  async function editRacer(racer: AdminRacer) {
+    const categoryInput = prompt(`Bike category (${Object.values(RacerCategory).join(', ')})?`, racer.category);
+    if (!categoryInput) return;
+    const category = categoryInput.trim().toUpperCase() as RacerCategory;
+    if (!Object.values(RacerCategory).includes(category)) {
+      alert(`Invalid bike category. Use ${Object.values(RacerCategory).join(', ')}`);
+      return;
+    }
+
+    const sexInput = prompt(`Sex category (${Object.values(SexCategory).join(', ')})?`, racer.sexCategory);
+    if (!sexInput) return;
+    const sexCategory = sexInput.trim().toUpperCase() as SexCategory;
+    if (!Object.values(SexCategory).includes(sexCategory)) {
+      alert(`Invalid sex category. Use ${Object.values(SexCategory).join(', ')}`);
+      return;
+    }
+
+    const ageInput = prompt(`Age group (${Object.values(AgeGroup).join(', ')})?`, racer.ageGroup);
+    if (!ageInput) return;
+    const ageGroup = ageInput.trim() as AgeGroup;
+    if (!Object.values(AgeGroup).includes(ageGroup)) {
+      alert(`Invalid age group. Use ${Object.values(AgeGroup).join(', ')}`);
+      return;
+    }
+
+    await adminUpdateRacer(token, racer.id, { category, sexCategory, ageGroup });
+    await loadData();
+  }
+
+  async function handleCreateChallenge(e: React.FormEvent) {
+    e.preventDefault();
+    setCreateStatus('');
+    try {
+      const res = await adminCreateChallenge(token, {
+        name: createName,
+        description: createDescription,
+        startDate: createStartDate,
+        endDate: createEndDate,
+      }) as { id: string };
+      setCreateStatus(`Created challenge ${res.id}`);
+      setCreateName('');
+      setCreateDescription('');
+      setCreateStartDate('');
+      setCreateEndDate('');
+      await loadData();
+    } catch (err) {
+      setCreateStatus(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
+  async function handleShowActivate() {
+    setShowActivateList(true);
+    const res = await adminGetChallenges(token);
+    setDraftChallenges(res.challenges.filter((c) => c.status === 'DRAFT'));
+  }
+
+  async function handleActivate(id: string) {
+    setActivatingId(id);
+    try {
+      await adminActivateChallenge(token, id);
+      setDraftChallenges((prev) => prev.filter((c) => c.id !== id));
+      await loadData();
+    } catch (err) {
+      alert(`Failed to activate: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setActivatingId(null);
+    }
+  }
+
+  async function handleDeleteChallenge(challenge: ChallengeInfo) {
+    if (!confirm(`Delete "${challenge.name}"? This will permanently remove the challenge and all its segments, results, and leaderboard entries.`)) return;
+    setDeletingId(challenge.id);
+    try {
+      await adminDeleteChallenge(token, challenge.id);
+      await loadData();
+    } catch (err) {
+      alert(`Failed to delete: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleShowAddSegment() {
+    setShowAddSegment(true);
+    setAddSegmentStatus('');
+    const [chRes, segRes] = await Promise.all([
+      adminGetChallenges(token),
+      adminGetAllSegments(token),
+    ]);
+    setChallenges(chRes.challenges);
+    setAllSegments(segRes.segments);
+    if (chRes.challenges.length > 0 && !segmentChallengeId) {
+      setSegmentChallengeId(chRes.challenges[0].id);
+    }
+  }
+
+  async function handleAddNewSegment(e: React.FormEvent) {
+    e.preventDefault();
+    setAddSegmentStatus('');
+    const stravaSegmentId = extractStravaSegmentId(newStravaId);
+    if (!stravaSegmentId) {
+      setAddSegmentStatus('Invalid Strava segment URL or ID');
+      return;
+    }
+    if (!segmentChallengeId) {
+      setAddSegmentStatus('Select a challenge first');
+      return;
+    }
+
+    try {
+      setAddSegmentStatus('Fetching segment metadata from Strava...');
+      const metadata = await adminGetStravaSegment(token, stravaSegmentId);
+      const confirmed = confirm([
+        `Add Strava segment ${metadata.stravaSegmentId}?`,
+        '',
+        `Name: ${metadata.name}`,
+        `Distance: ${Math.round(metadata.distance)} m`,
+        `Elevation gain: ${Math.round(metadata.elevationGain)} m`,
+        `Location: ${[metadata.city, metadata.state, metadata.country].filter(Boolean).join(', ') || 'Unknown'}`,
+        `Average grade: ${metadata.averageGrade ?? 'Unknown'}`,
+        `Max grade: ${metadata.maximumGrade ?? 'Unknown'}`,
+      ].join('\n'));
+      if (!confirmed) {
+        setAddSegmentStatus('');
+        return;
+      }
+
+      await adminAddSegment(token, { ...metadata, challengeId: segmentChallengeId });
+      setAddSegmentStatus('Segment added successfully!');
+      setNewStravaId('');
+      await loadData();
+    } catch (err) {
+      setAddSegmentStatus(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
+  async function handleReuseSegment(e: React.FormEvent) {
+    e.preventDefault();
+    setAddSegmentStatus('');
+    if (!reuseSegmentId || !segmentChallengeId) {
+      setAddSegmentStatus('Select both a segment and a challenge');
+      return;
+    }
+
+    const seg = allSegments.find((s) => s.id === reuseSegmentId);
+    if (!seg) {
+      setAddSegmentStatus('Segment not found');
+      return;
+    }
+
+    try {
+      await adminAddSegment(token, {
+        stravaSegmentId: seg.stravaSegmentId,
+        name: seg.name,
+        distance: seg.distance,
+        elevationGain: seg.elevationGain,
+        challengeId: segmentChallengeId,
+      });
+      setAddSegmentStatus('Segment added successfully!');
+      setReuseSegmentId('');
+      await loadData();
+    } catch (err) {
+      setAddSegmentStatus(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
+  function downloadOpenApi() {
+    const url = URL.createObjectURL(new Blob([openApiJson], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'openapi.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function runSelectedEndpoint() {
+    if (!selectedEndpoint) return;
+    setEndpointRunning(true);
+    setEndpointStatus('');
+    setEndpointResponse('');
+
+    try {
+      const path = selectedEndpoint.path.replace(/\{([^}]+)\}/g, (_, name) => {
+        const value = endpointParams[name]?.trim();
+        if (!value) throw new Error(`Missing value for ${name}`);
+        return encodeURIComponent(value);
+      });
+
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const init: RequestInit = { method: selectedEndpoint.method, headers };
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(selectedEndpoint.method) && endpointBody.trim()) {
+        headers['Content-Type'] = 'application/json';
+        init.body = endpointBody;
+      }
+
+      const res = await fetch(`/api${path}`, init);
+      setEndpointStatus(`${res.status} ${res.statusText}`);
+      setEndpointResponse(await res.text() || '(empty response body)');
+    } catch (err) {
+      setEndpointStatus('Request failed');
+      setEndpointResponse(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setEndpointRunning(false);
+    }
+  }
+
+  function selectEndpoint(endpoint: typeof openApiEndpoints[number]) {
+    setSelectedEndpoint(endpoint);
+    setEndpointParams({});
+    setEndpointBody(endpoint.requestBodyRequired ? '{\n  \n}' : '');
+    setEndpointStatus('');
+    setEndpointResponse('');
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('enduro_jwt');
+    setToken('');
+  }
+
+  if (!ready) return null;
+
+  // Login gate
+  if (!token) {
+    return (
+      <main style={{ maxWidth: '420px', margin: '6rem auto', padding: '0 1.5rem', textAlign: 'center' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/logo.png" alt="SMM Enduro Challenge" style={{ maxWidth: '200px', marginBottom: '2rem' }} />
+        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem' }}>Admin</h1>
+        <p style={{ color: 'var(--color-muted)', marginBottom: '2rem' }}>
+          Sign in with your Strava account to access the admin panel.
+        </p>
+        {loginError && (
+          <p style={{ color: '#dc3545', marginBottom: '1.5rem', fontWeight: 600 }}>{loginError}</p>
+        )}
+        <a
+          href={buildAdminLoginUrl()}
+          style={{
+            display: 'inline-block', padding: '0.85rem 2rem',
+            background: '#fc4c02', color: '#fff', borderRadius: '6px',
+            fontWeight: 700, textDecoration: 'none',
+          }}
+        >
+          Login with Strava
+        </a>
+      </main>
+    );
   }
 
   return (
     <main style={{ padding: '2rem 0' }}>
       <div className="container">
-        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1.5rem' }}>Admin</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800 }}>Admin</h1>
+          <button onClick={handleLogout} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)', padding: '0.45rem 0.9rem' }}>
+            Logout
+          </button>
+        </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
-          <button onClick={createChallenge} style={btnStyle}>Create Challenge</button>
-          <button onClick={activateChallenge} style={btnStyle}>Activate Challenge</button>
-          <button onClick={addSegment} style={btnStyle}>Add Segment</button>
+          <button onClick={() => setShowCreateForm((v) => !v)} style={btnStyle}>Create Challenge</button>
+          <button onClick={handleShowActivate} style={btnStyle}>Activate Challenge</button>
+          <button onClick={handleShowAddSegment} style={btnStyle}>Add Segment</button>
+          <button onClick={() => setShowDocs((current) => !current)} style={btnStyle}>API Docs</button>
+          <button onClick={cleanupConnectedAthletes} style={btnStyle}>Cleanup Strava Slots</button>
           <button onClick={loadData} style={{ ...btnStyle, background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             Refresh Data
           </button>
         </div>
+
+        {/* Create Challenge Form */}
+        {showCreateForm && (
+          <section style={{ ...cardStyle, marginBottom: '1.5rem' }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>Create Challenge</h2>
+            <form onSubmit={handleCreateChallenge} style={{ display: 'grid', gap: '0.75rem', maxWidth: '480px' }}>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>Name</span>
+                <input value={createName} onChange={(e) => setCreateName(e.target.value)} required style={textInputStyle} placeholder="Winter Enduro 2026" />
+              </label>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>Description</span>
+                <textarea value={createDescription} onChange={(e) => setCreateDescription(e.target.value)} rows={2} style={{ ...textInputStyle, resize: 'vertical' }} placeholder="Optional description" />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <label style={labelStyle}>
+                  <span style={labelTextStyle}>Start Date</span>
+                  <input type="date" value={createStartDate} onChange={(e) => setCreateStartDate(e.target.value)} required style={textInputStyle} />
+                </label>
+                <label style={labelStyle}>
+                  <span style={labelTextStyle}>End Date</span>
+                  <input type="date" value={createEndDate} onChange={(e) => setCreateEndDate(e.target.value)} required style={textInputStyle} />
+                </label>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <button type="submit" style={btnStyle}>Create</button>
+                <button type="button" onClick={() => setShowCreateForm(false)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}>Cancel</button>
+              </div>
+              {createStatus && <p style={{ fontSize: '0.85rem', color: createStatus.startsWith('Error') ? '#dc3545' : '#16a34a', margin: 0 }}>{createStatus}</p>}
+            </form>
+          </section>
+        )}
+
+        {/* Activate Challenge */}
+        {showActivateList && (
+          <section style={{ ...cardStyle, marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Activate a Draft Challenge</h2>
+              <button onClick={() => setShowActivateList(false)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)', padding: '0.35rem 0.7rem' }}>Close</button>
+            </div>
+            {draftChallenges.length === 0 ? (
+              <p style={{ color: 'var(--color-muted)' }}>No draft challenges found.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                {draftChallenges.map((c) => (
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '0.75rem', background: 'var(--color-background)', borderRadius: '6px', border: '1px solid var(--color-border)' }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{c.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{c.startDate} to {c.endDate}</div>
+                    </div>
+                    <button onClick={() => handleActivate(c.id)} disabled={activatingId === c.id} style={{ ...btnStyle, padding: '0.4rem 0.85rem', opacity: activatingId === c.id ? 0.5 : 1 }}>
+                      {activatingId === c.id ? 'Activating...' : 'Activate'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Add Segment */}
+        {showAddSegment && (
+          <section style={{ ...cardStyle, marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Add Segment</h2>
+              <button onClick={() => setShowAddSegment(false)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)', padding: '0.35rem 0.7rem' }}>Close</button>
+            </div>
+
+            <label style={{ ...labelStyle, marginBottom: '1rem', maxWidth: '360px' }}>
+              <span style={labelTextStyle}>Target Challenge</span>
+              <select value={segmentChallengeId} onChange={(e) => setSegmentChallengeId(e.target.value)} style={textInputStyle}>
+                <option value="">Select challenge...</option>
+                {challenges.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.status})</option>
+                ))}
+              </select>
+            </label>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+              <button onClick={() => setSegmentMode('new')} style={{ ...btnStyle, ...(segmentMode === 'new' ? {} : { background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }), padding: '0.4rem 0.85rem' }}>
+                New Segment
+              </button>
+              <button onClick={() => setSegmentMode('reuse')} style={{ ...btnStyle, ...(segmentMode === 'reuse' ? {} : { background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }), padding: '0.4rem 0.85rem' }}>
+                Reuse Existing
+              </button>
+            </div>
+
+            {segmentMode === 'new' ? (
+              <form onSubmit={handleAddNewSegment} style={{ display: 'grid', gap: '0.75rem', maxWidth: '480px' }}>
+                <label style={labelStyle}>
+                  <span style={labelTextStyle}>Strava Segment URL or ID</span>
+                  <input value={newStravaId} onChange={(e) => setNewStravaId(e.target.value)} required style={textInputStyle} placeholder="https://www.strava.com/segments/12345 or 12345" />
+                </label>
+                <button type="submit" style={btnStyle}>Fetch & Add</button>
+              </form>
+            ) : (
+              <form onSubmit={handleReuseSegment} style={{ display: 'grid', gap: '0.75rem', maxWidth: '480px' }}>
+                <label style={labelStyle}>
+                  <span style={labelTextStyle}>Select segment from another challenge</span>
+                  <select value={reuseSegmentId} onChange={(e) => setReuseSegmentId(e.target.value)} required style={textInputStyle}>
+                    <option value="">Select segment...</option>
+                    {allSegments.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name} (from {s.challengeName})</option>
+                    ))}
+                  </select>
+                </label>
+                <button type="submit" style={btnStyle}>Add to Challenge</button>
+              </form>
+            )}
+
+            {addSegmentStatus && <p style={{ fontSize: '0.85rem', marginTop: '0.75rem', color: addSegmentStatus.startsWith('Error') ? '#dc3545' : addSegmentStatus.includes('successfully') ? '#16a34a' : 'var(--color-muted)' }}>{addSegmentStatus}</p>}
+          </section>
+        )}
+
+        {/* Challenges List */}
+        {challenges.length > 0 && (
+          <section style={{ marginBottom: '2rem' }}>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
+              Challenges ({challenges.length})
+            </h2>
+            <div style={{ display: 'grid', gap: '0.5rem' }}>
+              {challenges.map((c) => (
+                <div key={c.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+                  background: 'var(--color-surface)', padding: '0.75rem 1rem', borderRadius: '6px',
+                  border: '1px solid var(--color-border)',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>{c.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                      {c.status} &middot; {c.startDate} to {c.endDate} &middot; {c.segmentIds.length} segments
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteChallenge(c)}
+                    disabled={deletingId === c.id}
+                    style={{
+                      padding: '0.4rem 0.85rem', background: '#dc3545', color: '#fff',
+                      border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer',
+                      opacity: deletingId === c.id ? 0.5 : 1,
+                    }}
+                  >
+                    {deletingId === c.id ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {showDocs && (
+          <section style={{ marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>API Docs</h2>
+              <button onClick={downloadOpenApi} style={{ ...btnStyle, padding: '0.45rem 0.9rem' }}>Download OpenAPI</button>
+            </div>
+
+            <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '6px', overflow: 'hidden', marginBottom: '1rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--color-border)', color: 'var(--color-muted)', textTransform: 'uppercase', fontSize: '0.75rem' }}>
+                    <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', width: '90px' }}>Method</th>
+                    <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left' }}>Path</th>
+                    <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left' }}>Area</th>
+                    <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left' }}>Summary</th>
+                    <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right', width: '110px' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openApiEndpoints.map((endpoint) => (
+                    <tr key={`${endpoint.method} ${endpoint.path}`} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <td style={{ padding: '0.65rem 0.75rem', fontWeight: 700 }}>{endpoint.method}</td>
+                      <td style={{ padding: '0.65rem 0.75rem', fontFamily: 'monospace' }}>{endpoint.path}</td>
+                      <td style={{ padding: '0.65rem 0.75rem' }}>{endpoint.tag}</td>
+                      <td style={{ padding: '0.65rem 0.75rem', color: 'var(--color-muted)' }}>{endpoint.summary}</td>
+                      <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>
+                        <button onClick={() => selectEndpoint(endpoint)} style={{ ...btnStyle, padding: '0.35rem 0.7rem' }}>
+                          Run
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {selectedEndpoint && (
+              <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '6px', padding: '1rem', marginBottom: '1rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>
+                  Run {selectedEndpoint.method} {selectedEndpoint.path}
+                </h3>
+
+                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  {selectedEndpoint.path.match(/\{([^}]+)\}/g)?.map((placeholder) => {
+                    const name = placeholder.slice(1, -1);
+                    return (
+                      <label key={name} style={{ display: 'grid', gap: '0.35rem', fontSize: '0.85rem' }}>
+                        <span style={{ color: 'var(--color-muted)' }}>{name}</span>
+                        <input
+                          value={endpointParams[name] ?? ''}
+                          onChange={(e) => setEndpointParams((prev) => ({ ...prev, [name]: e.target.value }))}
+                          placeholder={name}
+                          style={textInputStyle}
+                        />
+                      </label>
+                    );
+                  })}
+
+                  {['POST', 'PUT', 'PATCH', 'DELETE'].includes(selectedEndpoint.method) && (
+                    <label style={{ display: 'grid', gap: '0.35rem', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--color-muted)' }}>JSON body</span>
+                      <textarea
+                        value={endpointBody}
+                        onChange={(e) => setEndpointBody(e.target.value)}
+                        rows={8}
+                        style={{ ...textInputStyle, fontFamily: 'monospace', resize: 'vertical' }}
+                        placeholder={selectedEndpoint.requestBodyRequired ? '{ }' : '{}'}
+                      />
+                    </label>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <button onClick={runSelectedEndpoint} disabled={endpointRunning} style={btnStyle}>
+                      {endpointRunning ? 'Running...' : 'Execute'}
+                    </button>
+                    <button onClick={() => setSelectedEndpoint(null)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}>
+                      Close
+                    </button>
+                  </div>
+
+                  {endpointStatus && (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--color-muted)' }}>{endpointStatus}</div>
+                  )}
+
+                  {endpointResponse && (
+                    <pre style={{ background: '#111827', color: '#f9fafb', padding: '1rem', borderRadius: '6px', fontSize: '0.8rem', overflow: 'auto', maxHeight: '280px' }}>
+                      {endpointResponse}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <pre style={{ background: 'var(--color-surface)', padding: '1rem', borderRadius: '6px', fontSize: '0.72rem', overflow: 'auto', maxHeight: '420px', border: '1px solid var(--color-border)' }}>
+              {openApiJson}
+            </pre>
+          </section>
+        )}
+
+        {/* Stored Strava Connections */}
+        <section style={{ marginBottom: '2rem' }}>
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
+            Stored Strava Connections ({connectedAthletes.length})
+          </h2>
+          {connectedAthletes.length === 0 ? (
+            <p style={{ color: 'var(--color-muted)' }}>No stored Strava tokens. Click Refresh Data to load.</p>
+          ) : (
+            <div style={{ display: 'grid', gap: '0.5rem' }}>
+              {connectedAthletes.map((athlete) => (
+                <div key={athlete.racerId} style={{
+                  display: 'flex', alignItems: 'center', gap: '1rem',
+                  background: 'var(--color-surface)', padding: '0.75rem 1rem', borderRadius: '6px',
+                  border: '1px solid var(--color-border)',
+                }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={athlete.profileImageUrl} alt=""
+                    style={{ width: 36, height: 36, borderRadius: '50%' }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600 }}>{athlete.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                      Strava #{athlete.stravaAthleteId} &middot; {athlete.category} &middot; {athlete.sexCategory} &middot; {athlete.ageGroup}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeauthorize(athlete)}
+                    disabled={deauthorizing === athlete.racerId}
+                    style={{
+                      padding: '0.4rem 0.85rem', background: '#dc3545', color: '#fff',
+                      border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer',
+                      opacity: deauthorizing === athlete.racerId ? 0.5 : 1,
+                    }}
+                  >
+                    {deauthorizing === athlete.racerId ? 'Removing...' : 'Deauthorize'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
           <section>
@@ -76,9 +741,38 @@ export default function AdminPage() {
           </section>
           <section>
             <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>Racers ({racers.length})</h2>
-            <pre style={{ background: 'var(--color-surface)', padding: '1rem', borderRadius: '6px', fontSize: '0.75rem', overflow: 'auto' }}>
-              {JSON.stringify(racers, null, 2)}
-            </pre>
+            <div style={{ display: 'grid', gap: '0.5rem' }}>
+              {racers.map((racer) => (
+                <div
+                  key={racer.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '6px',
+                    padding: '0.75rem',
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={racer.profileImageUrl}
+                    alt=""
+                    style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>{racer.firstName} {racer.lastName}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                      {racer.category} &middot; {racer.sexCategory} &middot; {racer.ageGroup}
+                    </div>
+                  </div>
+                  <button onClick={() => editRacer(racer)} style={{ ...btnStyle, padding: '0.4rem 0.85rem' }}>
+                    Edit
+                  </button>
+                </div>
+              ))}
+            </div>
           </section>
         </div>
       </div>
@@ -95,3 +789,43 @@ const btnStyle: React.CSSProperties = {
   fontWeight: 600,
   cursor: 'pointer',
 };
+
+const textInputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '0.75rem',
+  borderRadius: '6px',
+  border: '1px solid var(--color-border)',
+  background: 'var(--color-background)',
+  color: 'var(--color-text)',
+  fontSize: '0.95rem',
+};
+
+const cardStyle: React.CSSProperties = {
+  background: 'var(--color-surface)',
+  border: '1px solid var(--color-border)',
+  borderRadius: '8px',
+  padding: '1.25rem',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: '0.35rem',
+};
+
+const labelTextStyle: React.CSSProperties = {
+  fontSize: '0.85rem',
+  color: 'var(--color-muted)',
+};
+
+function extractStravaSegmentId(input: string): number | null {
+  const match = input.match(/segments\/(\d+)/) ?? input.match(/^(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense>
+      <AdminContent />
+    </Suspense>
+  );
+}

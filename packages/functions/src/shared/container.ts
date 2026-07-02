@@ -5,6 +5,8 @@ import {
   DynamoDBSegmentRepository,
   DynamoDBResultRepository,
   DynamoDBLeaderboardRepository,
+  DynamoDBUserRepository,
+  StravaCacheRepository,
   StravaClient,
 } from '@enduro/infrastructure';
 import {
@@ -12,6 +14,7 @@ import {
   AddSegmentHandler,
   CreateChallengeHandler,
   ProcessActivityHandler,
+  PollSegmentLeaderboardHandler,
   GetLeaderboardHandler,
   GetRacerResultsHandler,
 } from '@enduro/application';
@@ -25,20 +28,29 @@ export const racerRepository = new DynamoDBRacerRepository(docClient);
 export const segmentRepository = new DynamoDBSegmentRepository(docClient);
 export const resultRepository = new DynamoDBResultRepository(docClient);
 export const leaderboardRepository = new DynamoDBLeaderboardRepository(docClient);
+export const userRepository = new DynamoDBUserRepository(docClient);
+export const stravaCacheRepository = new StravaCacheRepository(docClient);
 
-// Strava client — credentials from environment (set via SSM → Lambda env)
+// Strava client — credentials parsed from STRAVA_CONFIG JSON env var
+import { config } from './config';
+
 export const stravaClient = new StravaClient(
-  process.env.STRAVA_CLIENT_ID!,
-  process.env.STRAVA_CLIENT_SECRET!,
+  config.strava.clientId,
+  config.strava.clientSecret,
 );
 
 // Application handlers
-export const registerRacerHandler = new RegisterRacerHandler(racerRepository);
+export const registerRacerHandler = new RegisterRacerHandler(racerRepository, userRepository);
 export const addSegmentHandler = new AddSegmentHandler(segmentRepository, challengeRepository);
 export const createChallengeHandler = new CreateChallengeHandler(challengeRepository);
 export const processActivityHandler = new ProcessActivityHandler(
   racerRepository,
   segmentRepository,
+  resultRepository,
+  leaderboardRepository,
+);
+export const pollSegmentLeaderboardHandler = new PollSegmentLeaderboardHandler(
+  racerRepository,
   resultRepository,
   leaderboardRepository,
 );

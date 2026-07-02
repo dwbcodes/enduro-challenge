@@ -1,4 +1,4 @@
-import { DynamoDBDocumentClient, PutCommand, DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, DeleteCommand, QueryCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { Leaderboard, LeaderboardCategory, LeaderboardEntry, LeaderboardRepository } from '@enduro/domain';
 import { TABLE_NAME, GSI2, keys } from './table';
 
@@ -62,5 +62,30 @@ export class DynamoDBLeaderboardRepository implements LeaderboardRepository {
       TableName: TABLE_NAME,
       Key: keys.leaderboardEntry(segmentId, category, racerId),
     }));
+  }
+
+  async deleteBySegment(segmentId: string): Promise<void> {
+    for (const category of Object.values(LeaderboardCategory)) {
+      const pk = `LEADERBOARD#${segmentId}#${category}`;
+      const result = await this.client.send(new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: 'PK = :pk',
+        ExpressionAttributeValues: { ':pk': pk },
+        ProjectionExpression: 'PK, SK',
+      }));
+      const items = result.Items ?? [];
+      if (items.length === 0) continue;
+
+      for (let i = 0; i < items.length; i += 25) {
+        const batch = items.slice(i, i + 25);
+        await this.client.send(new BatchWriteCommand({
+          RequestItems: {
+            [TABLE_NAME]: batch.map((item) => ({
+              DeleteRequest: { Key: { PK: item['PK'] as string, SK: item['SK'] as string } },
+            })),
+          },
+        }));
+      }
+    }
   }
 }

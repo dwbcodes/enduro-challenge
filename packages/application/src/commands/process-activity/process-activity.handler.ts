@@ -9,6 +9,7 @@ import {
   Racer,
   RacerCategory,
   AgeGroup,
+  SexCategory,
 } from '@enduro/domain';
 import { ProcessActivityCommand } from './process-activity.command';
 
@@ -49,7 +50,7 @@ export class ProcessActivityHandler {
   }
 
   private async updateLeaderboards(racer: Racer, result: Result): Promise<void> {
-    const categories = this.resolveCategories(racer.category, racer.ageGroup);
+    const categories = this.resolveCategories(racer.category, racer.ageGroup, racer.sexCategory);
 
     for (const category of categories) {
       const entry: LeaderboardEntry = {
@@ -65,7 +66,7 @@ export class ProcessActivityHandler {
     }
   }
 
-  private resolveCategories(racerCategory: RacerCategory, ageGroup: AgeGroup): LeaderboardCategory[] {
+  private resolveCategories(racerCategory: RacerCategory, ageGroup: AgeGroup, sexCategory: SexCategory): LeaderboardCategory[] {
     const ageMap: Record<AgeGroup, LeaderboardCategory> = {
       [AgeGroup.UNDER_30]: LeaderboardCategory.AGE_U30,
       [AgeGroup.AGE_30_39]: LeaderboardCategory.AGE_30_39,
@@ -74,14 +75,21 @@ export class ProcessActivityHandler {
       [AgeGroup.AGE_60_PLUS]: LeaderboardCategory.AGE_60_PLUS,
     };
 
-    const bikeCategoryMap: Record<RacerCategory, LeaderboardCategory> = {
-      [RacerCategory.MTB]: LeaderboardCategory.MTB,
-      [RacerCategory.EBIKE]: LeaderboardCategory.EBIKE,
+    const bikeCategoryMap: Record<RacerCategory, LeaderboardCategory[]> = {
+      [RacerCategory.MTB]: [LeaderboardCategory.MTB],
+      [RacerCategory.EBIKE]: [LeaderboardCategory.EBIKE],
+      [RacerCategory.BOTH]: [LeaderboardCategory.MTB, LeaderboardCategory.EBIKE],
+    };
+
+    const sexCategoryMap: Record<SexCategory, LeaderboardCategory> = {
+      [SexCategory.MALE]: LeaderboardCategory.MALE,
+      [SexCategory.FEMALE]: LeaderboardCategory.FEMALE,
     };
 
     return [
       LeaderboardCategory.OVERALL,
-      bikeCategoryMap[racerCategory],
+      ...bikeCategoryMap[racerCategory],
+      sexCategoryMap[sexCategory],
       ageMap[ageGroup],
     ];
   }

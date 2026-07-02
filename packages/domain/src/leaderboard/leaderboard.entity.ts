@@ -2,6 +2,8 @@ export enum LeaderboardCategory {
   OVERALL = 'OVERALL',
   MTB = 'MTB',
   EBIKE = 'EBIKE',
+  MALE = 'MALE',
+  FEMALE = 'FEMALE',
   AGE_U30 = 'AGE_U30',
   AGE_30_39 = 'AGE_30_39',
   AGE_40_49 = 'AGE_40_49',

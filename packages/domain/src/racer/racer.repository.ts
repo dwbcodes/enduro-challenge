@@ -8,5 +8,7 @@ export interface RacerRepository {
   save(racer: Racer): Promise<void>;
   saveToken(token: StravaToken): Promise<void>;
   findToken(racerId: string): Promise<StravaToken | null>;
+  findAllTokens(): Promise<StravaToken[]>;
+  deleteToken(racerId: string): Promise<void>;
   delete(id: string): Promise<void>;
 }

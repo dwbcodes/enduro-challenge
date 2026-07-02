@@ -1,11 +1,18 @@
-import { AgeGroup, RacerCategory, LeaderboardCategory } from '@enduro/domain';
+import { AgeGroup, RacerCategory, SexCategory, LeaderboardCategory } from '@enduro/domain';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, init);
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  const url = `${API_URL}${path}`;
+  const res = await fetch(url, init);
+  if (!res.ok) throw new Error(`API error ${res.status}: ${url}`);
   return res.json() as Promise<T>;
+}
+
+function absoluteApiUrl(): string {
+  if (API_URL.startsWith('http')) return API_URL;
+  if (typeof window === 'undefined') return API_URL;
+  return `${window.location.origin}${API_URL}`;
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -36,20 +43,75 @@ export function getLeaderboard(segmentId: string, category: LeaderboardCategory 
   return apiFetch(`/leaderboard/${segmentId}?category=${category}`);
 }
 
+export interface RacerInfo {
+  id: string;
+  firstName: string;
+  lastName: string;
+  profileImageUrl: string;
+  category: RacerCategory;
+  ageGroup: AgeGroup;
+  sexCategory: SexCategory;
+  registeredAt: string;
+}
+
+export interface RacersResponse {
+  challengeId: string;
+  racers: RacerInfo[];
+}
+
+export function getRacers(): Promise<RacersResponse> {
+  return apiFetch('/racers');
+}
+
+export interface ChallengeInfo {
+  id: string;
+  name: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  segmentIds: string[];
+}
+
+export interface ChallengesResponse {
+  active: ChallengeInfo[];
+  upcoming: ChallengeInfo[];
+  past: ChallengeInfo[];
+}
+
+export function getChallenges(): Promise<ChallengesResponse> {
+  return apiFetch('/challenges');
+}
+
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export function buildStravaOAuthUrl(
   category: RacerCategory,
-  ageGroup: AgeGroup,
+  sexCategory: SexCategory,
   challengeId: string,
 ): string {
-  const state = btoa(JSON.stringify({ category, ageGroup, challengeId }));
+  const state = btoa(JSON.stringify({ category, sexCategory, challengeId }));
   const params = new URLSearchParams({
     client_id: process.env.NEXT_PUBLIC_STRAVA_CLIENT_ID ?? '',
-    redirect_uri: `${API_URL}/auth/callback`,
+    redirect_uri: `${absoluteApiUrl()}/auth/callback`,
     response_type: 'code',
     approval_prompt: 'auto',
-    scope: 'activity:read_all',
+    scope: 'read,profile:read_all',
+    state,
+  });
+  return `https://www.strava.com/oauth/authorize?${params.toString()}`;
+}
+
+// ─── Admin Login ─────────────────────────────────────────────────────────────
+
+export function buildAdminLoginUrl(): string {
+  const state = btoa(JSON.stringify({ intent: 'admin_login' }));
+  const params = new URLSearchParams({
+    client_id: process.env.NEXT_PUBLIC_STRAVA_CLIENT_ID ?? '',
+    redirect_uri: `${absoluteApiUrl()}/auth/callback`,
+    response_type: 'code',
+    approval_prompt: 'auto',
+    scope: 'read',
     state,
   });
   return `https://www.strava.com/oauth/authorize?${params.toString()}`;
@@ -85,5 +147,81 @@ export function adminAddSegment(token: string, body: object) {
     method: 'POST',
     headers: authHeaders(token),
     body: JSON.stringify(body),
+  });
+}
+
+export interface StravaSegmentMetadata {
+  stravaSegmentId: number;
+  name: string;
+  distance: number;
+  elevationGain: number;
+  city?: string;
+  state?: string;
+  country?: string;
+  averageGrade?: number;
+  maximumGrade?: number;
+  elevationHigh?: number;
+  elevationLow?: number;
+  climbCategory?: number;
+  private?: boolean;
+  hazardous?: boolean;
+  starCount?: number;
+  athleteCount?: number;
+  effortCount?: number;
+  rawStravaMetadata?: Record<string, unknown>;
+}
+
+export function adminGetStravaSegment(token: string, stravaSegmentId: number): Promise<StravaSegmentMetadata> {
+  return apiFetch(`/admin/strava/segments/${stravaSegmentId}`, { headers: authHeaders(token) });
+}
+
+export interface ConnectedAthlete {
+  racerId: string;
+  stravaAthleteId: number;
+  name: string;
+  profileImageUrl: string;
+  category: string;
+  ageGroup: string;
+  sexCategory: string;
+}
+
+export function adminGetConnectedAthletes(token: string): Promise<{ athletes: ConnectedAthlete[] }> {
+  return apiFetch('/admin/connected-athletes', { headers: authHeaders(token) });
+}
+
+export function adminDeauthorizeRacer(token: string, racerId: string) {
+  return apiFetch(`/admin/racers/${racerId}/deauthorize`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  });
+}
+
+export function adminUpdateRacer(token: string, racerId: string, body: object) {
+  return apiFetch(`/admin/racers/${racerId}`, {
+    method: 'PATCH',
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+}
+
+export function adminGetChallenges(token: string): Promise<{ challenges: ChallengeInfo[] }> {
+  return apiFetch('/admin/challenges', { headers: authHeaders(token) });
+}
+
+export function adminDeleteChallenge(token: string, challengeId: string) {
+  return apiFetch(`/admin/challenges/${challengeId}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+}
+
+export function adminGetAllSegments(token: string): Promise<{ segments: (SegmentInfo & { challengeName: string; challengeId: string })[] }> {
+  return apiFetch('/admin/segments/all', { headers: authHeaders(token) });
+}
+
+export function adminCleanupConnectedAthletes(token: string) {
+  return apiFetch('/admin/connected-athletes/cleanup', {
+    method: 'POST',
+    headers: authHeaders(token),
   });
 }

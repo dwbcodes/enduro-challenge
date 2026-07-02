@@ -1,0 +1,3 @@
+{
+  "ssm:account=350141380063:parameterName=/enduro-challenge/aws:region=us-west-2": "{\"frontendUrl\":\"https://d152gxg9dh92dl.cloudfront.net\",\"apiUrl\":\"https://uwgohasssb.execute-api.us-west-2.amazonaws.com\",\"siteBucketName\":\"enduro-challenge-site-350141380063\",\"distributionId\":\"EUCRQIV5D2Y63\"}"
+}

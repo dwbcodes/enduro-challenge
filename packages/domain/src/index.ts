@@ -20,6 +20,10 @@ export * from './segment/segment.repository';
 export * from './result/result.entity';
 export * from './result/result.repository';
 
+// User
+export * from './user/user.entity';
+export * from './user/user.repository';
+
 // Leaderboard
 export * from './leaderboard/leaderboard.entity';
 export * from './leaderboard/leaderboard.repository';

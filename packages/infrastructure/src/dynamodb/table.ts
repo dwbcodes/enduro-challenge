@@ -32,6 +32,9 @@ export function createDocumentClient(): DynamoDBDocumentClient {
  *
  * GSI2 — sorted leaderboard (Number sort key)
  *   Leaderboard:      GSI2PK=LEADERBOARD#<segId>#<cat>  GSI2SK=<elapsedTimeSeconds>
+ *
+ * Strava leaderboard cache (raw response stored per segment per poll)
+ *   StravaCache:       PK=STRAVA_CACHE#<stravaSegmentId>  SK=#LEADERBOARD
  */
 export const keys = {
   challenge: (id: string) => ({ PK: `CHALLENGE#${id}`, SK: '#META' }),
@@ -52,5 +55,9 @@ export const keys = {
   leaderboardEntry: (segmentId: string, category: string, racerId: string) => ({
     PK: `LEADERBOARD#${segmentId}#${category}`,
     SK: `RACER#${racerId}`,
+  }),
+  stravaCache: (stravaSegmentId: number) => ({
+    PK: `STRAVA_CACHE#${stravaSegmentId}`,
+    SK: '#LEADERBOARD',
   }),
 };

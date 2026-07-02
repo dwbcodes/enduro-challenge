@@ -3,6 +3,7 @@ import { Entity } from '../shared/entity';
 export enum RacerCategory {
   MTB = 'MTB',
   EBIKE = 'EBIKE',
+  BOTH = 'BOTH',
 }
 
 export enum AgeGroup {
@@ -13,6 +14,11 @@ export enum AgeGroup {
   AGE_60_PLUS = '60+',
 }
 
+export enum SexCategory {
+  MALE = 'MALE',
+  FEMALE = 'FEMALE',
+}
+
 export interface RacerProps {
   stravaAthleteId: number;
   firstName: string;
@@ -20,6 +26,7 @@ export interface RacerProps {
   profileImageUrl: string;
   category: RacerCategory;
   ageGroup: AgeGroup;
+  sexCategory: SexCategory;
   challengeId: string;
   registeredAt: Date;
   updatedAt: Date;
@@ -44,6 +51,7 @@ export class Racer extends Entity<string> {
   get profileImageUrl(): string { return this.props.profileImageUrl; }
   get category(): RacerCategory { return this.props.category; }
   get ageGroup(): AgeGroup { return this.props.ageGroup; }
+  get sexCategory(): SexCategory { return this.props.sexCategory; }
   get challengeId(): string { return this.props.challengeId; }
   get registeredAt(): Date { return this.props.registeredAt; }
   get updatedAt(): Date { return this.props.updatedAt; }

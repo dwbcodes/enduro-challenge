@@ -13,22 +13,32 @@ NAMESPACE="${1:-${SSM_NAMESPACE:-/enduro-challenge}}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/../apps/web/.env.local"
 
-echo "Fetching config from SSM namespace: ${NAMESPACE}"
+echo "Fetching config from namespace: ${NAMESPACE}"
 
-get_param() {
+get_ssm_json_field() {
   aws ssm get-parameter \
     --name "${NAMESPACE}/$1" \
     --query 'Parameter.Value' \
     --output text \
-    --with-decryption 2>/dev/null
+    --with-decryption | jq -r --arg field "$2" '.[$field] // empty'
 }
 
-API_URL="$(get_param 'api-url')"
-STRAVA_CLIENT_ID="$(get_param 'client-id')"
+API_URL="$(get_ssm_json_field 'aws' 'apiUrl')"
+STRAVA_CLIENT_ID="$(get_ssm_json_field 'strava' 'clientId')"
+
+if [[ -z "${API_URL}" ]]; then
+  echo "Missing apiUrl in ${NAMESPACE}/aws" >&2
+  exit 1
+fi
+
+if [[ -z "${STRAVA_CLIENT_ID}" ]]; then
+  echo "Missing clientId in ${NAMESPACE}/strava" >&2
+  exit 1
+fi
 
 cat > "${ENV_FILE}" <<EOF
-# Auto-generated from SSM ${NAMESPACE} — do not edit manually
-NEXT_PUBLIC_API_URL=${API_URL}
+# Auto-generated from ${NAMESPACE} SSM params - do not edit manually
+NEXT_PUBLIC_API_URL=/api
 NEXT_PUBLIC_STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID}
 EOF
 

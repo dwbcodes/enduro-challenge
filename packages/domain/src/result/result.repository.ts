@@ -6,4 +6,5 @@ export interface ResultRepository {
   findByRacer(racerId: string): Promise<Result[]>;
   save(result: Result): Promise<void>;
   delete(segmentId: string, racerId: string): Promise<void>;
+  deleteBySegment(segmentId: string): Promise<void>;
 }

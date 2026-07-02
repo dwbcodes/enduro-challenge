@@ -4,4 +4,6 @@ export * from './dynamodb/racer.repository';
 export * from './dynamodb/segment.repository';
 export * from './dynamodb/result.repository';
 export * from './dynamodb/leaderboard.repository';
+export * from './dynamodb/user.repository';
+export * from './dynamodb/strava-cache.repository';
 export * from './strava/strava.client';

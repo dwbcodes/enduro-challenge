@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AgeGroup, RacerCategory } from '@enduro/domain';
+import { RacerCategory, SexCategory } from '@enduro/domain';
 import { buildStravaOAuthUrl, getSegments } from '@/lib/api';
 
 export default function RegisterPage() {
   const [category, setCategory] = useState<RacerCategory>(RacerCategory.MTB);
-  const [ageGroup, setAgeGroup] = useState<AgeGroup>(AgeGroup.AGE_30_39);
+  const [sexCategory, setSexCategory] = useState<SexCategory>(SexCategory.MALE);
   const [challengeId, setChallengeId] = useState('');
 
   useEffect(() => {
@@ -17,7 +17,7 @@ export default function RegisterPage() {
 
   function handleRegister() {
     if (!challengeId) return;
-    const url = buildStravaOAuthUrl(category, ageGroup, challengeId);
+    const url = buildStravaOAuthUrl(category, sexCategory, challengeId);
     window.location.href = url;
   }
 
@@ -25,7 +25,7 @@ export default function RegisterPage() {
     <main style={{ maxWidth: '480px', margin: '4rem auto', padding: '0 1.5rem' }}>
       <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '0.5rem' }}>Register</h1>
       <p style={{ color: 'var(--color-muted)', marginBottom: '2rem' }}>
-        Select your category, then connect with Strava. Your segment times will be tracked automatically.
+        Select your categories, then connect with Strava. Your segment times will be tracked automatically.
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -53,21 +53,24 @@ export default function RegisterPage() {
 
         <div>
           <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-muted)', marginBottom: '0.5rem' }}>
-            Age Group
+            Sex Category
           </label>
-          <select
-            value={ageGroup}
-            onChange={(e) => setAgeGroup(e.target.value as AgeGroup)}
-            style={{
-              width: '100%', padding: '0.75rem', borderRadius: '6px',
-              border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-              color: 'var(--color-text)', fontSize: '1rem',
-            }}
-          >
-            {Object.values(AgeGroup).map((ag) => (
-              <option key={ag} value={ag}>{ag}</option>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            {Object.values(SexCategory).map((sex) => (
+              <button
+                key={sex}
+                onClick={() => setSexCategory(sex)}
+                style={{
+                  flex: 1, padding: '0.75rem', borderRadius: '6px', fontWeight: 600, cursor: 'pointer',
+                  border: sexCategory === sex ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                  background: sexCategory === sex ? 'rgba(232,82,26,0.1)' : 'var(--color-surface)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                {sex}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
 
         <button

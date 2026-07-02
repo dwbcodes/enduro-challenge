@@ -1,4 +1,4 @@
-import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, QueryCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { Result, ResultRepository } from '@enduro/domain';
 import { TABLE_NAME, GSI1, keys } from './table';
 
@@ -60,6 +60,29 @@ export class DynamoDBResultRepository implements ResultRepository {
       TableName: TABLE_NAME,
       Key: keys.result(segmentId, racerId),
     }));
+  }
+
+  async deleteBySegment(segmentId: string): Promise<void> {
+    const result = await this.client.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'PK = :pk',
+      ExpressionAttributeValues: { ':pk': `RESULT#${segmentId}` },
+      ProjectionExpression: 'PK, SK',
+    }));
+    const items = result.Items ?? [];
+    if (items.length === 0) return;
+
+    // BatchWrite in chunks of 25
+    for (let i = 0; i < items.length; i += 25) {
+      const batch = items.slice(i, i + 25);
+      await this.client.send(new BatchWriteCommand({
+        RequestItems: {
+          [TABLE_NAME]: batch.map((item) => ({
+            DeleteRequest: { Key: { PK: item['PK'] as string, SK: item['SK'] as string } },
+          })),
+        },
+      }));
+    }
   }
 
   private toEntity(item: Record<string, unknown>): Result {

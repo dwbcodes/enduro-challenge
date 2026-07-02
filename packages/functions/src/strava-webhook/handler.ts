@@ -7,10 +7,11 @@
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { ok, badRequest, serverError } from '../shared/response';
+import { config } from '../shared/config';
 
 const sqs = new SQSClient({ region: process.env.AWS_REGION });
 const QUEUE_URL = process.env.ACTIVITY_QUEUE_URL!;
-const VERIFY_TOKEN = process.env.STRAVA_WEBHOOK_VERIFY_TOKEN!;
+const VERIFY_TOKEN = config.strava.webhookVerifyToken;
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   try {

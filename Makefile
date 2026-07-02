@@ -10,12 +10,15 @@ CDK := pnpm --filter infra exec cdk
 # SSM namespace — all config lives under this prefix in AWS Parameter Store
 SSM_NAMESPACE ?= /enduro-challenge
 
-.PHONY: help install build clean dev config synth diff deploy deploy-db deploy-api deploy-frontend
+.PHONY: help setup install build clean dev config test synth diff deploy deploy-db deploy-api deploy-frontend
 
 help:
 	@awk 'BEGIN {FS = ":.*## "; print "Usage: make <target>\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2} /^## / {print substr($$0, 4)}' $(MAKEFILE_LIST)
 
 ## ── Setup ────────────────────────────────────────────────────────────────────
+
+setup: ## One-time SSM parameter bootstrap (generates secrets, sets admin ID)
+	./scripts/setup-ssm.sh $(SSM_NAMESPACE)
 
 install: ## Install dependencies (nvm + pnpm)
 	$(NVM_INIT) && pnpm install
@@ -25,6 +28,9 @@ build: install ## Build all packages
 
 clean: ## Remove build artifacts
 	$(NVM_INIT) && pnpm -r run clean
+
+test: ## Run all tests
+	$(NVM_INIT) && pnpm exec vitest run
 
 ## ── Config ───────────────────────────────────────────────────────────────────
 
