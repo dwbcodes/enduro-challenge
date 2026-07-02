@@ -23,10 +23,10 @@ export class ApiStack extends cdk.Stack {
 
     const { table } = props;
 
-    // --- SSM Parameters (created manually or via CI under SSM_PREFIX) ---
-    const stravaClientId = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/strava/client-id`);
-    const stravaClientSecret = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/strava/client-secret`);
-    const stravaWebhookVerifyToken = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/strava/webhook-verify-token`);
+    // --- SSM Parameters (String type, created before first deploy) ---
+    const stravaClientId = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/client-id`);
+    const stravaClientSecret = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/client-secret`);
+    const stravaWebhookVerifyToken = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/webhook-verify-token`);
     const jwtSecret = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/jwt-secret`);
     const frontendUrl = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/frontend-url`);
     const adminAthleteIds = ssm.StringParameter.valueForStringParameter(this, `${SSM_PREFIX}/admin-athlete-ids`);

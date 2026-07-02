@@ -24,7 +24,7 @@ get_param() {
 }
 
 API_URL="$(get_param 'api-url')"
-STRAVA_CLIENT_ID="$(get_param 'strava/client-id')"
+STRAVA_CLIENT_ID="$(get_param 'client-id')"
 
 cat > "${ENV_FILE}" <<EOF
 # Auto-generated from SSM ${NAMESPACE} — do not edit manually
