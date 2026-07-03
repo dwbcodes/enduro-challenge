@@ -43,7 +43,11 @@ function AdminContent() {
   const [segments, setSegments] = useState<unknown[]>([]);
   const [connectedAthletes, setConnectedAthletes] = useState<ConnectedAthlete[]>([]);
   const [deauthorizing, setDeauthorizing] = useState<string | null>(null);
-  const [showDocs, setShowDocs] = useState(false);
+  const [activePanel, setActivePanel] = useState<'create' | 'activate' | 'segment' | 'docs' | null>(null);
+  const showCreateForm = activePanel === 'create';
+  const showActivateList = activePanel === 'activate';
+  const showAddSegment = activePanel === 'segment';
+  const showDocs = activePanel === 'docs';
   const [openApiJson, setOpenApiJson] = useState('');
   const [openApiEndpoints, setOpenApiEndpoints] = useState<Array<{
     method: string;
@@ -66,7 +70,6 @@ function AdminContent() {
   const [endpointRunning, setEndpointRunning] = useState(false);
 
   // Create Challenge form state
-  const [showCreateForm, setShowCreateForm] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createDescription, setCreateDescription] = useState('');
   const [createStartDate, setCreateStartDate] = useState('');
@@ -74,7 +77,6 @@ function AdminContent() {
   const [createStatus, setCreateStatus] = useState('');
 
   // Activate Challenge state
-  const [showActivateList, setShowActivateList] = useState(false);
   const [draftChallenges, setDraftChallenges] = useState<ChallengeInfo[]>([]);
   const [activatingId, setActivatingId] = useState<string | null>(null);
 
@@ -83,7 +85,6 @@ function AdminContent() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Add Segment state
-  const [showAddSegment, setShowAddSegment] = useState(false);
   const [segmentMode, setSegmentMode] = useState<'new' | 'reuse' | 'starred'>('new');
   const [newStravaId, setNewStravaId] = useState('');
   const [segmentChallengeId, setSegmentChallengeId] = useState('');
@@ -224,7 +225,7 @@ function AdminContent() {
   }
 
   async function handleShowActivate() {
-    setShowActivateList(true);
+    setActivePanel('activate');
     const res = await adminGetChallenges(token);
     setDraftChallenges(res.challenges.filter((c) => c.status === 'DRAFT'));
   }
@@ -256,7 +257,7 @@ function AdminContent() {
   }
 
   async function handleShowAddSegment() {
-    setShowAddSegment(true);
+    setActivePanel('segment');
     setAddSegmentStatus('');
     const [chRes, segRes] = await Promise.all([
       adminGetChallenges(token),
@@ -465,10 +466,10 @@ function AdminContent() {
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
-          <button onClick={() => setShowCreateForm((v) => !v)} style={btnStyle}>Create Challenge</button>
+          <button onClick={() => setActivePanel(activePanel === 'create' ? null : 'create')} style={btnStyle}>Create Challenge</button>
           <button onClick={handleShowActivate} style={btnStyle}>Activate Challenge</button>
           <button onClick={handleShowAddSegment} style={btnStyle}>Add Segment</button>
-          <button onClick={() => setShowDocs((current) => !current)} style={btnStyle}>API Docs</button>
+          <button onClick={() => setActivePanel(activePanel === 'docs' ? null : 'docs')} style={btnStyle}>API Docs</button>
           <button onClick={cleanupConnectedAthletes} style={btnStyle}>Cleanup Strava Slots</button>
           <button onClick={loadData} style={{ ...btnStyle, background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             Refresh Data
@@ -500,7 +501,7 @@ function AdminContent() {
               </div>
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                 <button type="submit" style={btnStyle}>Create</button>
-                <button type="button" onClick={() => setShowCreateForm(false)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}>Cancel</button>
+                <button type="button" onClick={() => setActivePanel(null)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}>Cancel</button>
               </div>
               {createStatus && <p style={{ fontSize: '0.85rem', color: createStatus.startsWith('Error') ? '#dc3545' : '#16a34a', margin: 0 }}>{createStatus}</p>}
             </form>
@@ -512,7 +513,7 @@ function AdminContent() {
           <section style={{ ...cardStyle, marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Activate a Draft Challenge</h2>
-              <button onClick={() => setShowActivateList(false)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)', padding: '0.35rem 0.7rem' }}>Close</button>
+              <button onClick={() => setActivePanel(null)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)', padding: '0.35rem 0.7rem' }}>Close</button>
             </div>
             {draftChallenges.length === 0 ? (
               <p style={{ color: 'var(--color-muted)' }}>No draft challenges found.</p>
@@ -539,7 +540,7 @@ function AdminContent() {
           <section style={{ ...cardStyle, marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Add Segment</h2>
-              <button onClick={() => setShowAddSegment(false)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)', padding: '0.35rem 0.7rem' }}>Close</button>
+              <button onClick={() => setActivePanel(null)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)', padding: '0.35rem 0.7rem' }}>Close</button>
             </div>
 
             <label style={{ ...labelStyle, marginBottom: '1rem', maxWidth: '360px' }}>
