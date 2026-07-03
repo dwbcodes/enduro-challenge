@@ -22,6 +22,11 @@ export default function SharedHeader() {
           <Link href="/" style={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: '0.05em', textDecoration: 'none', color: 'inherit' }}>
             SMM ENDURO CHALLENGE
           </Link>
+          {challengeName && (
+            <span style={{ fontSize: '0.85rem', color: 'var(--color-muted)', borderLeft: '1px solid var(--color-border)', paddingLeft: '1rem' }}>
+              {challengeName}
+            </span>
+          )}
           {challenges.length > 1 && (
             <select
               value={challengeId ?? ''}
@@ -53,9 +58,6 @@ export default function SharedHeader() {
                 </optgroup>
               )}
             </select>
-          )}
-          {challenges.length <= 1 && challengeName && (
-            <span style={{ fontSize: '0.85rem', color: 'var(--color-muted)' }}>{challengeName}</span>
           )}
         </div>
         <nav style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem' }}>
