@@ -104,6 +104,9 @@ function AdminContent() {
   const [adminStatus, setAdminStatus] = useState('');
   const [removingAdmin, setRemovingAdmin] = useState<number | null>(null);
 
+  // Challenge scope for admin views
+  const [selectedChallengeId, setSelectedChallengeId] = useState<string>('');
+
   useEffect(() => {
     const urlToken = searchParams.get('token');
     const error = searchParams.get('error');
@@ -151,10 +154,11 @@ function AdminContent() {
       });
   }, [showDocs, openApiJson]);
 
-  async function loadData() {
+  async function loadData(challengeIdOverride?: string) {
+    const scopeId = challengeIdOverride ?? selectedChallengeId;
     const [r, s, c, ch] = await Promise.all([
-      adminGetRacers(token) as Promise<{ racers: AdminRacer[] }>,
-      adminGetSegments(token) as Promise<{ segments: unknown[] }>,
+      adminGetRacers(token, scopeId || undefined) as Promise<{ racers: AdminRacer[] }>,
+      adminGetSegments(token, scopeId || undefined) as Promise<{ segments: unknown[] }>,
       adminGetConnectedAthletes(token),
       adminGetChallenges(token),
     ]);
@@ -162,6 +166,12 @@ function AdminContent() {
     setSegments(s.segments);
     setConnectedAthletes(c.athletes);
     setChallenges(ch.challenges);
+    // Auto-select first challenge if none selected
+    if (!scopeId && ch.challenges.length > 0) {
+      const active = ch.challenges.find((c) => c.status === 'ACTIVE');
+      const first = active ?? ch.challenges[0];
+      setSelectedChallengeId(first.id);
+    }
   }
 
   async function handleDeauthorize(athlete: ConnectedAthlete) {
@@ -518,17 +528,36 @@ function AdminContent() {
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
           <button onClick={() => setActivePanel(activePanel === 'create' ? null : 'create')} style={btnStyle}>Create Challenge</button>
           <button onClick={handleShowActivate} style={btnStyle}>Activate Challenge</button>
           <button onClick={handleShowAddSegment} style={btnStyle}>Add Segment</button>
           <button onClick={handleShowAdmins} style={btnStyle}>Manage Admins</button>
           <button onClick={() => setActivePanel(activePanel === 'docs' ? null : 'docs')} style={btnStyle}>API Docs</button>
           <button onClick={cleanupConnectedAthletes} style={btnStyle}>Cleanup Strava Slots</button>
-          <button onClick={loadData} style={{ ...btnStyle, background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+          <button onClick={() => loadData()} style={{ ...btnStyle, background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
             Refresh Data
           </button>
         </div>
+
+        {/* Challenge Scope Selector */}
+        {challenges.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', padding: '0.75rem 1rem', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '6px' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--color-muted)', fontWeight: 600 }}>Viewing:</span>
+            <select
+              value={selectedChallengeId}
+              onChange={(e) => {
+                setSelectedChallengeId(e.target.value);
+                loadData(e.target.value);
+              }}
+              style={{ ...textInputStyle, width: 'auto', flex: 1, maxWidth: '400px' }}
+            >
+              {challenges.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} ({c.status})</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Create Challenge Form */}
         {showCreateForm && (
@@ -924,13 +953,27 @@ function AdminContent() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
           <section>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>Segments ({segments.length})</h2>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
+              Segments ({segments.length})
+              {selectedChallengeId && challenges.length > 0 && (
+                <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--color-muted)', marginLeft: '0.5rem' }}>
+                  — {challenges.find((c) => c.id === selectedChallengeId)?.name}
+                </span>
+              )}
+            </h2>
             <pre style={{ background: 'var(--color-surface)', padding: '1rem', borderRadius: '6px', fontSize: '0.75rem', overflow: 'auto' }}>
               {JSON.stringify(segments, null, 2)}
             </pre>
           </section>
           <section>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>Racers ({racers.length})</h2>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
+              Racers ({racers.length})
+              {selectedChallengeId && challenges.length > 0 && (
+                <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--color-muted)', marginLeft: '0.5rem' }}>
+                  — {challenges.find((c) => c.id === selectedChallengeId)?.name}
+                </span>
+              )}
+            </h2>
             <div style={{ display: 'grid', gap: '0.5rem' }}>
               {racers.map((racer) => (
                 <div

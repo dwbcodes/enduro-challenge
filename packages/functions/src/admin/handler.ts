@@ -111,10 +111,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     // GET /admin/racers
     if (method === 'GET' && path === '/admin/racers') {
-      const challenge = await challengeRepository.findActive();
+      const requestedId = event.queryStringParameters?.challengeId;
+      const challenge = requestedId
+        ? await challengeRepository.findById(requestedId)
+        : await challengeRepository.findActive();
       if (!challenge) return ok({ racers: [] });
       const racers = await racerRepository.findByChallengeId(challenge.id);
-      return ok({ racers: racers.map((r) => r.toJSON()) });
+      return ok({ challengeId: challenge.id, racers: racers.map((r) => r.toJSON()) });
     }
 
     // GET /admin/segments/all
@@ -130,10 +133,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     // GET /admin/segments
     if (method === 'GET' && path === '/admin/segments') {
-      const challenge = await challengeRepository.findActive();
+      const requestedId = event.queryStringParameters?.challengeId;
+      const challenge = requestedId
+        ? await challengeRepository.findById(requestedId)
+        : await challengeRepository.findActive();
       if (!challenge) return ok({ segments: [] });
       const segments = await segmentRepository.findByChallengeId(challenge.id);
-      return ok({ segments: segments.map((s) => s.toJSON()) });
+      return ok({ challengeId: challenge.id, segments: segments.map((s) => s.toJSON()) });
     }
 
     // DELETE /admin/segments/:id

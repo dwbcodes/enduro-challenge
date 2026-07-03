@@ -141,12 +141,14 @@ export function buildAdminLoginUrl(): string {
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
 
-export function adminGetSegments(token: string) {
-  return apiFetch('/admin/segments', { headers: authHeaders(token) });
+export function adminGetSegments(token: string, challengeId?: string) {
+  const query = challengeId ? `?challengeId=${challengeId}` : '';
+  return apiFetch(`/admin/segments${query}`, { headers: authHeaders(token) });
 }
 
-export function adminGetRacers(token: string) {
-  return apiFetch('/admin/racers', { headers: authHeaders(token) });
+export function adminGetRacers(token: string, challengeId?: string) {
+  const query = challengeId ? `?challengeId=${challengeId}` : '';
+  return apiFetch(`/admin/racers${query}`, { headers: authHeaders(token) });
 }
 
 export function adminCreateChallenge(token: string, body: object) {
