@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { LeaderboardCategory } from '@enduro/domain';
 import { getLeaderboard, getSegments, SegmentInfo, LeaderboardEntry, LeaderboardData } from '@/lib/api';
@@ -54,18 +54,17 @@ function PodiumCard({
   CrownComponent: typeof KingCrown | typeof QueenCrown;
 }) {
   const isFirst = rank === 1;
-  const imgSize = isFirst ? 72 : 52;
+  const imgSize = isFirst ? 56 : 40;
   const borderColor = rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : '#CD7F32';
 
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem',
-      flex: isFirst ? '0 0 auto' : '0 0 auto',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem',
     }}>
       <div style={{ position: 'relative' }}>
         {isFirst && (
-          <div style={{ position: 'absolute', top: -20, left: '50%', transform: 'translateX(-50%)', zIndex: 2 }}>
-            <CrownComponent size={isFirst ? 32 : 24} />
+          <div style={{ position: 'absolute', top: -16, left: '50%', transform: 'translateX(-50%)', zIndex: 2 }}>
+            <CrownComponent size={isFirst ? 26 : 20} />
           </div>
         )}
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -74,31 +73,31 @@ function PodiumCard({
           alt={entry.racerName}
           style={{
             width: imgSize, height: imgSize, borderRadius: '50%',
-            border: `3px solid ${borderColor}`,
+            border: `2px solid ${borderColor}`,
             objectFit: 'cover',
           }}
         />
         <div style={{
-          position: 'absolute', bottom: -4, right: -4,
-          width: 22, height: 22, borderRadius: '50%',
+          position: 'absolute', bottom: -3, right: -3,
+          width: 18, height: 18, borderRadius: '50%',
           background: borderColor, color: '#000',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 800, fontSize: '0.7rem',
+          fontWeight: 800, fontSize: '0.6rem',
         }}>
           {rank}
         </div>
       </div>
-      <div style={{ fontSize: isFirst ? '0.85rem' : '0.78rem', fontWeight: 700, textAlign: 'center', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ fontSize: '0.7rem', fontWeight: 700, textAlign: 'center', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {entry.racerName}
       </div>
-      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-primary)', fontVariantNumeric: 'tabular-nums' }}>
+      <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--color-primary)', fontVariantNumeric: 'tabular-nums' }}>
         {formatTime(entry.elapsedTimeSeconds)}
       </div>
     </div>
   );
 }
 
-function PodiumSection({
+function PodiumRow({
   title,
   entries,
   CrownComponent,
@@ -109,29 +108,23 @@ function PodiumSection({
 }) {
   if (entries.length === 0) return null;
 
-  // Display order: #2, #1, #3 for visual podium effect
   const ordered = [entries[1], entries[0], entries[2]].filter(Boolean);
   const isKing = CrownComponent === KingCrown;
 
   return (
-    <div style={{
-      background: 'var(--color-surface)', borderRadius: '8px', padding: '1.25rem',
-      border: '1px solid var(--color-border)', flex: 1, minWidth: 200,
-    }}>
-      <h3 style={{
-        fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase',
+    <div>
+      <div style={{
+        fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '0.05em', color: isKing ? '#FFD700' : '#C0C0C0',
-        marginBottom: '1rem', textAlign: 'center',
+        marginBottom: '0.5rem', textAlign: 'center',
       }}>
         {title}
-      </h3>
-      <div style={{
-        display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: '1.25rem',
-      }}>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: '0.75rem' }}>
         {ordered.map((entry, i) => {
           const rank = [2, 1, 3][i];
           return (
-            <div key={entry.racerId} style={{ marginBottom: rank === 1 ? 16 : 0 }}>
+            <div key={entry.racerId} style={{ marginBottom: rank === 1 ? 10 : 0 }}>
               <PodiumCard entry={entry} rank={rank} CrownComponent={CrownComponent} />
             </div>
           );
@@ -141,137 +134,226 @@ function PodiumSection({
   );
 }
 
+// ─── Segment Card (overview) ──────────────────────────────────────────────────
+
+interface SegmentLeaderboards {
+  male: LeaderboardEntry[];
+  female: LeaderboardEntry[];
+}
+
+function SegmentCard({
+  segment,
+  leaderboards,
+  onClick,
+}: {
+  segment: SegmentInfo;
+  leaderboards: SegmentLeaderboards;
+  onClick: () => void;
+}) {
+  const polyline = segment.rawStravaMetadata?.map?.polyline;
+  const hasPodiums = leaderboards.male.length > 0 || leaderboards.female.length > 0;
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+        borderRadius: '10px', overflow: 'hidden', cursor: 'pointer',
+        transition: 'border-color 0.15s',
+      }}
+    >
+      {/* Map */}
+      {polyline && <SegmentMap polyline={polyline} height={200} />}
+
+      <div style={{ padding: '1rem' }}>
+        {/* Segment name + stats */}
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.3rem' }}>{segment.name}</h2>
+        <div style={{ fontSize: '0.78rem', color: 'var(--color-muted)', marginBottom: '1rem' }}>
+          {(segment.distance / 1000).toFixed(1)} km &middot; {Math.round(segment.elevationGain)} m gain
+        </div>
+
+        {/* Podiums side by side */}
+        {hasPodiums ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <PodiumRow title="KOM" entries={leaderboards.male} CrownComponent={KingCrown} />
+            <PodiumRow title="QOM" entries={leaderboards.female} CrownComponent={QueenCrown} />
+          </div>
+        ) : (
+          <p style={{ color: 'var(--color-muted)', fontSize: '0.85rem', textAlign: 'center' }}>No results yet</p>
+        )}
+
+        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--color-primary)', fontWeight: 600 }}>
+            View full leaderboard &rarr;
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Detail View ──────────────────────────────────────────────────────────────
+
+function SegmentDetail({
+  segment,
+  onBack,
+}: {
+  segment: SegmentInfo;
+  onBack: () => void;
+}) {
+  const [category, setCategory] = useState<LeaderboardCategory>(LeaderboardCategory.OVERALL);
+  const [data, setData] = useState<LeaderboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const polyline = segment.rawStravaMetadata?.map?.polyline;
+
+  useEffect(() => {
+    setLoading(true);
+    getLeaderboard(segment.id, category)
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [segment.id, category]);
+
+  return (
+    <>
+      <button onClick={onBack} style={{
+        background: 'none', border: 'none', color: 'var(--color-primary)',
+        cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem', padding: 0, marginBottom: '1rem',
+      }}>
+        &larr; All Segments
+      </button>
+
+      <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.3rem' }}>{segment.name}</h2>
+      <div style={{ fontSize: '0.85rem', color: 'var(--color-muted)', marginBottom: '1.25rem' }}>
+        {(segment.distance / 1000).toFixed(1)} km &middot; {Math.round(segment.elevationGain)} m gain
+      </div>
+
+      {polyline && (
+        <div style={{ marginBottom: '1.25rem' }}>
+          <SegmentMap polyline={polyline} height={260} />
+        </div>
+      )}
+
+      <div style={{ marginBottom: '1.25rem' }}>
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value as LeaderboardCategory)}
+          style={selectStyle}
+        >
+          {Object.values(LeaderboardCategory).map((cat) => (
+            <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>
+          ))}
+        </select>
+      </div>
+
+      {loading && <p style={{ color: 'var(--color-muted)' }}>Loading...</p>}
+
+      {!loading && data && data.entries.length > 0 && (
+        <div style={{ background: 'var(--color-surface)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--color-border)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: '0.8rem', color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'left', width: '50px' }}>#</th>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'left' }}>Rider</th>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Time</th>
+                <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.entries.map((entry) => (
+                <tr key={entry.racerId} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  <td style={{ padding: '0.85rem 1rem', fontWeight: entry.rank <= 3 ? 700 : 400, color: entry.rank <= 3 ? 'var(--color-primary)' : 'var(--color-text)' }}>
+                    {entry.rank}
+                  </td>
+                  <td style={{ padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    {entry.profileImageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={entry.profileImageUrl} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                    )}
+                    {entry.racerName}
+                  </td>
+                  <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                    {formatTime(entry.elapsedTimeSeconds)}
+                  </td>
+                  <td style={{ padding: '0.85rem 1rem', textAlign: 'right', color: 'var(--color-muted)', fontSize: '0.85rem' }}>
+                    {new Date(entry.achievedAt).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && data && data.entries.length === 0 && (
+        <p style={{ color: 'var(--color-muted)' }}>No results yet for this category. Be the first to ride!</p>
+      )}
+
+      {!loading && !data && <p style={{ color: 'var(--color-muted)' }}>No results yet. Be the first to ride!</p>}
+    </>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function LeaderboardPage() {
   const [segments, setSegments] = useState<SegmentInfo[]>([]);
-  const [segmentId, setSegmentId] = useState('');
-  const [category, setCategory] = useState<LeaderboardCategory>(LeaderboardCategory.OVERALL);
-  const [data, setData] = useState<LeaderboardData | null>(null);
-  const [maleTop3, setMaleTop3] = useState<LeaderboardEntry[]>([]);
-  const [femaleTop3, setFemaleTop3] = useState<LeaderboardEntry[]>([]);
+  const [leaderboards, setLeaderboards] = useState<Record<string, SegmentLeaderboards>>({});
+  const [selectedSegment, setSelectedSegment] = useState<SegmentInfo | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const selectedSegment = useMemo(
-    () => segments.find((s) => s.id === segmentId),
-    [segments, segmentId],
-  );
-
-  const polyline = selectedSegment?.rawStravaMetadata?.map?.polyline;
 
   useEffect(() => {
     getSegments()
-      .then((res) => {
+      .then(async (res) => {
         setSegments(res.segments);
-        if (res.segments.length > 0) setSegmentId(res.segments[0].id);
+
+        // Fetch male + female top 3 for each segment
+        const results: Record<string, SegmentLeaderboards> = {};
+        await Promise.all(
+          res.segments.map(async (seg) => {
+            const [male, female] = await Promise.all([
+              getLeaderboard(seg.id, LeaderboardCategory.MALE).catch(() => null),
+              getLeaderboard(seg.id, LeaderboardCategory.FEMALE).catch(() => null),
+            ]);
+            results[seg.id] = {
+              male: male?.entries.slice(0, 3) ?? [],
+              female: female?.entries.slice(0, 3) ?? [],
+            };
+          }),
+        );
+        setLeaderboards(results);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  // Fetch main leaderboard
-  useEffect(() => {
-    if (!segmentId) return;
-    setLoading(true);
-    getLeaderboard(segmentId, category)
-      .then(setData)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [segmentId, category]);
-
-  // Fetch MALE + FEMALE top 3 for podium whenever segment changes
-  useEffect(() => {
-    if (!segmentId) return;
-    Promise.all([
-      getLeaderboard(segmentId, LeaderboardCategory.MALE).catch(() => null),
-      getLeaderboard(segmentId, LeaderboardCategory.FEMALE).catch(() => null),
-    ]).then(([male, female]) => {
-      setMaleTop3(male?.entries.slice(0, 3) ?? []);
-      setFemaleTop3(female?.entries.slice(0, 3) ?? []);
-    });
-  }, [segmentId]);
-
   return (
     <main style={{ padding: '2rem 0' }}>
       <div className="container">
-        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1.5rem' }}>Leaderboard</h1>
+        {selectedSegment ? (
+          <SegmentDetail segment={selectedSegment} onBack={() => setSelectedSegment(null)} />
+        ) : (
+          <>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1.5rem' }}>Leaderboard</h1>
 
-        {/* Selectors */}
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-          <select
-            value={segmentId}
-            onChange={(e) => setSegmentId(e.target.value)}
-            style={selectStyle}
-          >
-            {segments.map((seg) => <option key={seg.id} value={seg.id}>{seg.name}</option>)}
-          </select>
+            {loading && <p style={{ color: 'var(--color-muted)' }}>Loading segments...</p>}
 
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as LeaderboardCategory)}
-            style={selectStyle}
-          >
-            {Object.values(LeaderboardCategory).map((cat) => (
-              <option key={cat} value={cat}>{cat.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-        </div>
+            {!loading && segments.length === 0 && (
+              <p style={{ color: 'var(--color-muted)' }}>No segments yet. Be the first to ride!</p>
+            )}
 
-        {/* Route Map + Podiums */}
-        <div style={{ display: 'grid', gridTemplateColumns: polyline ? '1fr 1fr' : '1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-          {polyline && <SegmentMap polyline={polyline} height={280} />}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <PodiumSection title="King of the Mountain" entries={maleTop3} CrownComponent={KingCrown} />
-            <PodiumSection title="Queen of the Mountain" entries={femaleTop3} CrownComponent={QueenCrown} />
-          </div>
-        </div>
-
-        {/* Leaderboard Table */}
-        {loading && <p style={{ color: 'var(--color-muted)' }}>Loading...</p>}
-
-        {!loading && data && data.entries.length > 0 && (
-          <div style={{ background: 'var(--color-surface)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--color-border)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: '0.8rem', color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'left', width: '50px' }}>#</th>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'left' }}>Rider</th>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Time</th>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.entries.map((entry) => (
-                  <tr key={entry.racerId} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                    <td style={{ padding: '0.85rem 1rem', fontWeight: entry.rank <= 3 ? 700 : 400, color: entry.rank <= 3 ? 'var(--color-primary)' : 'var(--color-text)' }}>
-                      {entry.rank}
-                    </td>
-                    <td style={{ padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      {entry.profileImageUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={entry.profileImageUrl} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
-                      )}
-                      {entry.racerName}
-                    </td>
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                      {formatTime(entry.elapsedTimeSeconds)}
-                    </td>
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right', color: 'var(--color-muted)', fontSize: '0.85rem' }}>
-                      {new Date(entry.achievedAt).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            <div style={{ display: 'grid', gap: '1.5rem' }}>
+              {segments.map((seg) => (
+                <SegmentCard
+                  key={seg.id}
+                  segment={seg}
+                  leaderboards={leaderboards[seg.id] ?? { male: [], female: [] }}
+                  onClick={() => setSelectedSegment(seg)}
+                />
+              ))}
+            </div>
+          </>
         )}
-
-        {!loading && data && data.entries.length === 0 && (
-          <p style={{ color: 'var(--color-muted)' }}>No results yet for this category. Be the first to ride!</p>
-        )}
-
-        {!loading && !data && <p style={{ color: 'var(--color-muted)' }}>No results yet. Be the first to ride!</p>}
       </div>
     </main>
   );
