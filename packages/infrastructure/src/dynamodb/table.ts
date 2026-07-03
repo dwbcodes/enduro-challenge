@@ -60,4 +60,8 @@ export const keys = {
     PK: `STRAVA_CACHE#${stravaSegmentId}`,
     SK: '#LEADERBOARD',
   }),
+  admin: (stravaAthleteId: number) => ({
+    PK: `ADMIN#${stravaAthleteId}`,
+    SK: '#META',
+  }),
 };

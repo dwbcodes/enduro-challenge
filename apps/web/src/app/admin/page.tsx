@@ -8,6 +8,7 @@ import {
   adminGetConnectedAthletes, adminDeauthorizeRacer, ConnectedAthlete,
   adminGetStravaSegment, adminCleanupConnectedAthletes, adminUpdateRacer,
   adminGetChallenges, adminDeleteChallenge, adminGetAllSegments, adminGetStarredSegments,
+  adminGetAdmins, adminAddAdmin, adminRemoveAdmin, AdminUser,
   buildAdminLoginUrl, ChallengeInfo, SegmentInfo, StravaSegmentMetadata,
 } from '@/lib/api';
 
@@ -43,10 +44,11 @@ function AdminContent() {
   const [segments, setSegments] = useState<unknown[]>([]);
   const [connectedAthletes, setConnectedAthletes] = useState<ConnectedAthlete[]>([]);
   const [deauthorizing, setDeauthorizing] = useState<string | null>(null);
-  const [activePanel, setActivePanel] = useState<'create' | 'activate' | 'segment' | 'docs' | null>(null);
+  const [activePanel, setActivePanel] = useState<'create' | 'activate' | 'segment' | 'admins' | 'docs' | null>(null);
   const showCreateForm = activePanel === 'create';
   const showActivateList = activePanel === 'activate';
   const showAddSegment = activePanel === 'segment';
+  const showAdmins = activePanel === 'admins';
   const showDocs = activePanel === 'docs';
   const [openApiJson, setOpenApiJson] = useState('');
   const [openApiEndpoints, setOpenApiEndpoints] = useState<Array<{
@@ -94,6 +96,13 @@ function AdminContent() {
   const [starredSegments, setStarredSegments] = useState<StravaSegmentMetadata[]>([]);
   const [starredLoading, setStarredLoading] = useState(false);
   const [importingStarred, setImportingStarred] = useState<number | null>(null);
+
+  // Admin users state
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [newAdminAthleteId, setNewAdminAthleteId] = useState('');
+  const [newAdminName, setNewAdminName] = useState('');
+  const [adminStatus, setAdminStatus] = useState('');
+  const [removingAdmin, setRemovingAdmin] = useState<number | null>(null);
 
   useEffect(() => {
     const urlToken = searchParams.get('token');
@@ -371,6 +380,50 @@ function AdminContent() {
     }
   }
 
+  async function handleShowAdmins() {
+    setActivePanel('admins');
+    setAdminStatus('');
+    try {
+      const res = await adminGetAdmins(token);
+      setAdminUsers(res.admins);
+    } catch (err) {
+      setAdminStatus(`Error loading admins: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
+  async function handleAddAdmin(e: React.FormEvent) {
+    e.preventDefault();
+    setAdminStatus('');
+    const athleteId = Number(newAdminAthleteId.trim());
+    if (!athleteId || Number.isNaN(athleteId)) {
+      setAdminStatus('Enter a valid Strava athlete ID');
+      return;
+    }
+    try {
+      await adminAddAdmin(token, athleteId, newAdminName.trim());
+      setAdminStatus('Admin added successfully');
+      setNewAdminAthleteId('');
+      setNewAdminName('');
+      const res = await adminGetAdmins(token);
+      setAdminUsers(res.admins);
+    } catch (err) {
+      setAdminStatus(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
+  async function handleRemoveAdmin(stravaAthleteId: number) {
+    if (!confirm(`Remove admin with Strava ID ${stravaAthleteId}?`)) return;
+    setRemovingAdmin(stravaAthleteId);
+    try {
+      await adminRemoveAdmin(token, stravaAthleteId);
+      setAdminUsers((prev) => prev.filter((a) => a.stravaAthleteId !== stravaAthleteId));
+    } catch (err) {
+      alert(`Failed to remove: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setRemovingAdmin(null);
+    }
+  }
+
   function downloadOpenApi() {
     const url = URL.createObjectURL(new Blob([openApiJson], { type: 'application/json' }));
     const link = document.createElement('a');
@@ -469,6 +522,7 @@ function AdminContent() {
           <button onClick={() => setActivePanel(activePanel === 'create' ? null : 'create')} style={btnStyle}>Create Challenge</button>
           <button onClick={handleShowActivate} style={btnStyle}>Activate Challenge</button>
           <button onClick={handleShowAddSegment} style={btnStyle}>Add Segment</button>
+          <button onClick={handleShowAdmins} style={btnStyle}>Manage Admins</button>
           <button onClick={() => setActivePanel(activePanel === 'docs' ? null : 'docs')} style={btnStyle}>API Docs</button>
           <button onClick={cleanupConnectedAthletes} style={btnStyle}>Cleanup Strava Slots</button>
           <button onClick={loadData} style={{ ...btnStyle, background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
@@ -623,6 +677,70 @@ function AdminContent() {
             )}
 
             {addSegmentStatus && <p style={{ fontSize: '0.85rem', marginTop: '0.75rem', color: addSegmentStatus.startsWith('Error') ? '#dc3545' : addSegmentStatus.includes('successfully') ? '#16a34a' : 'var(--color-muted)' }}>{addSegmentStatus}</p>}
+          </section>
+        )}
+
+        {/* Manage Admins */}
+        {showAdmins && (
+          <section style={{ ...cardStyle, marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Admin Users</h2>
+              <button onClick={() => setActivePanel(null)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)', padding: '0.35rem 0.7rem' }}>Close</button>
+            </div>
+
+            <form onSubmit={handleAddAdmin} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <label style={{ ...labelStyle, flex: '0 0 160px' }}>
+                <span style={labelTextStyle}>Strava Athlete ID</span>
+                <input value={newAdminAthleteId} onChange={(e) => setNewAdminAthleteId(e.target.value)} required style={textInputStyle} placeholder="12345678" />
+              </label>
+              <label style={{ ...labelStyle, flex: '1 1 200px' }}>
+                <span style={labelTextStyle}>Name (optional)</span>
+                <input value={newAdminName} onChange={(e) => setNewAdminName(e.target.value)} style={textInputStyle} placeholder="John Doe" />
+              </label>
+              <button type="submit" style={{ ...btnStyle, padding: '0.75rem 1.25rem' }}>Add Admin</button>
+            </form>
+
+            {adminStatus && <p style={{ fontSize: '0.85rem', marginBottom: '0.75rem', color: adminStatus.startsWith('Error') ? '#dc3545' : '#16a34a' }}>{adminStatus}</p>}
+
+            {adminUsers.length === 0 ? (
+              <p style={{ color: 'var(--color-muted)' }}>No admin users found.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                {adminUsers.map((admin) => (
+                  <div key={admin.stravaAthleteId} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+                    padding: '0.75rem', background: 'var(--color-background)', borderRadius: '6px',
+                    border: '1px solid var(--color-border)',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600 }}>
+                        {admin.name || `Strava #${admin.stravaAthleteId}`}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                        Strava ID: {admin.stravaAthleteId}
+                        {admin.source === 'config' && ' · Root admin (config)'}
+                        {admin.addedAt && ` · Added ${new Date(admin.addedAt).toLocaleDateString()}`}
+                      </div>
+                    </div>
+                    {admin.source === 'database' ? (
+                      <button
+                        onClick={() => handleRemoveAdmin(admin.stravaAthleteId)}
+                        disabled={removingAdmin === admin.stravaAthleteId}
+                        style={{
+                          padding: '0.4rem 0.85rem', background: '#dc3545', color: '#fff',
+                          border: 'none', borderRadius: '4px', fontWeight: 600, cursor: 'pointer',
+                          opacity: removingAdmin === admin.stravaAthleteId ? 0.5 : 1,
+                        }}
+                      >
+                        {removingAdmin === admin.stravaAthleteId ? 'Removing...' : 'Remove'}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)', fontStyle: 'italic' }}>Protected</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 

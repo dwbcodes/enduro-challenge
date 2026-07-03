@@ -11,7 +11,7 @@ import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import jwt from 'jsonwebtoken';
 import { AgeGroup, RacerCategory, SexCategory } from '@enduro/domain';
 import { StravaTokenResponse } from '@enduro/infrastructure';
-import { stravaClient, registerRacerHandler, racerRepository } from '../shared/container';
+import { stravaClient, registerRacerHandler, racerRepository, adminRepository } from '../shared/container';
 import { badRequest, redirect, serverError } from '../shared/response';
 import { config } from '../shared/config';
 
@@ -51,7 +51,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     if (!state.category || !Object.values(RacerCategory).includes(state.category)) return badRequest('Invalid bike category');
     if (!state.challengeId) return badRequest('Missing challenge ID');
     const athlete = await stravaClient.getAuthenticatedAthlete(tokenResponse.access_token);
-    const isAdmin = ADMIN_ATHLETE_IDS.includes(athlete.id);
+    const isAdmin = ADMIN_ATHLETE_IDS.includes(athlete.id) || await adminRepository.isAdmin(athlete.id);
     const sexCategory = resolveSexCategory(athlete.sex);
 
     const registerCommand = {
@@ -118,7 +118,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
 async function handleAdminLogin(tokenResponse: StravaTokenResponse): Promise<APIGatewayProxyResultV2> {
   const athlete = tokenResponse.athlete;
-  const isAdmin = ADMIN_ATHLETE_IDS.includes(athlete.id);
+  const isAdmin = ADMIN_ATHLETE_IDS.includes(athlete.id) || await adminRepository.isAdmin(athlete.id);
 
   if (!isAdmin) {
     // Not an admin — deauthorize and redirect with error

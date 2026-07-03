@@ -249,3 +249,32 @@ export function adminCleanupConnectedAthletes(token: string) {
     headers: authHeaders(token),
   });
 }
+
+// ─── Admin Users ──────────────────────────────────────────────────────────────
+
+export interface AdminUser {
+  stravaAthleteId: number;
+  name: string;
+  addedAt: string;
+  addedBy: string;
+  source: 'config' | 'database';
+}
+
+export function adminGetAdmins(token: string): Promise<{ admins: AdminUser[] }> {
+  return apiFetch('/admin/admins', { headers: authHeaders(token) });
+}
+
+export function adminAddAdmin(token: string, stravaAthleteId: number, name: string) {
+  return apiFetch('/admin/admins', {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ stravaAthleteId, name }),
+  });
+}
+
+export function adminRemoveAdmin(token: string, stravaAthleteId: number) {
+  return apiFetch(`/admin/admins/${stravaAthleteId}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+}

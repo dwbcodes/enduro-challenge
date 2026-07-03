@@ -19,6 +19,7 @@ import {
   segmentRepository,
   resultRepository,
   leaderboardRepository,
+  adminRepository,
   stravaClient,
   createChallengeHandler,
   addSegmentHandler,
@@ -44,6 +45,11 @@ function verifyAdmin(event: APIGatewayProxyEventV2): AdminToken | null {
   } catch {
     return null;
   }
+}
+
+async function isAthleteAdmin(stravaAthleteId: number): Promise<boolean> {
+  if (config.adminAthleteIds.includes(stravaAthleteId)) return true;
+  return adminRepository.isAdmin(stravaAthleteId);
 }
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
@@ -300,6 +306,53 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       }
       await challengeRepository.delete(challengeId);
       return ok({ deleted: true, segmentsDeleted: segments.length });
+    }
+
+    // GET /admin/admins
+    if (method === 'GET' && path === '/admin/admins') {
+      const dbAdmins = await adminRepository.findAll();
+      const configAdmins = config.adminAthleteIds.map((id) => ({
+        stravaAthleteId: id,
+        name: '(config)',
+        addedAt: '',
+        addedBy: '',
+        source: 'config' as const,
+      }));
+      const dynamoAdmins = dbAdmins.map((a) => ({ ...a, source: 'database' as const }));
+      // Merge, dedup by stravaAthleteId
+      const seen = new Set<number>();
+      const admins = [...configAdmins, ...dynamoAdmins].filter((a) => {
+        if (seen.has(a.stravaAthleteId)) return false;
+        seen.add(a.stravaAthleteId);
+        return true;
+      });
+      return ok({ admins });
+    }
+
+    // POST /admin/admins
+    if (method === 'POST' && path === '/admin/admins') {
+      const body = JSON.parse(event.body ?? '{}') as { stravaAthleteId: number; name?: string };
+      if (!body.stravaAthleteId || typeof body.stravaAthleteId !== 'number') {
+        return badRequest('stravaAthleteId is required (number)');
+      }
+      await adminRepository.add({
+        stravaAthleteId: body.stravaAthleteId,
+        name: body.name ?? '',
+        addedAt: new Date().toISOString(),
+        addedBy: `${admin.stravaAthleteId}`,
+      });
+      return created({ added: true, stravaAthleteId: body.stravaAthleteId });
+    }
+
+    // DELETE /admin/admins/:stravaAthleteId
+    const deleteAdminMatch = path.match(/^\/admin\/admins\/(\d+)$/);
+    if (method === 'DELETE' && deleteAdminMatch) {
+      const targetId = Number(deleteAdminMatch[1]);
+      if (config.adminAthleteIds.includes(targetId)) {
+        return badRequest('Cannot remove a config-level admin. Remove from SSM parameter instead.');
+      }
+      await adminRepository.remove(targetId);
+      return ok({ removed: true, stravaAthleteId: targetId });
     }
 
     return notFound('Unknown admin route');
