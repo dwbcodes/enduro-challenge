@@ -183,6 +183,16 @@ export class StravaClient {
     return res.json() as Promise<StravaLeaderboardResponse>;
   }
 
+  async getStarredSegments(accessToken: string, page = 1, perPage = 30): Promise<StravaSegment[]> {
+    const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+    const res = await fetch(
+      `${this.baseUrl}/segments/starred?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(15_000) },
+    );
+    if (!res.ok) throw new Error(`Strava get starred segments failed: ${res.status}`);
+    return res.json() as Promise<StravaSegment[]>;
+  }
+
   async getSegment(accessToken: string, segmentId: number): Promise<StravaSegment> {
     const res = await fetch(
       `${this.baseUrl}/segments/${segmentId}`,

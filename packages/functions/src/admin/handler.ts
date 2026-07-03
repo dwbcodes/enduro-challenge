@@ -225,6 +225,28 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       return ok({ results });
     }
 
+    // GET /admin/strava/segments/starred
+    if (method === 'GET' && path === '/admin/strava/segments/starred') {
+      const accessToken = await getAdminAccessToken();
+      const starred = await stravaClient.getStarredSegments(accessToken, 1, 200);
+      return ok({
+        segments: starred.map((s) => ({
+          stravaSegmentId: s.id,
+          name: s.name,
+          distance: s.distance,
+          elevationGain: s.total_elevation_gain ?? 0,
+          city: s.city,
+          state: s.state,
+          country: s.country,
+          averageGrade: s.average_grade,
+          maximumGrade: s.maximum_grade,
+          climbCategory: s.climb_category,
+          athleteCount: s.athlete_count,
+          effortCount: s.effort_count,
+        })),
+      });
+    }
+
     // GET /admin/strava/segments/:id
     const stravaSegmentMatch = path.match(/^\/admin\/strava\/segments\/(\d+)$/);
     if (method === 'GET' && stravaSegmentMatch) {

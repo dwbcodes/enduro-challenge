@@ -195,6 +195,10 @@ export function adminGetStravaSegment(token: string, stravaSegmentId: number): P
   return apiFetch(`/admin/strava/segments/${stravaSegmentId}`, { headers: authHeaders(token) });
 }
 
+export function adminGetStarredSegments(token: string): Promise<{ segments: StravaSegmentMetadata[] }> {
+  return apiFetch('/admin/strava/segments/starred', { headers: authHeaders(token) });
+}
+
 export interface ConnectedAthlete {
   racerId: string;
   stravaAthleteId: number;

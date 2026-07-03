@@ -7,8 +7,8 @@ import {
   adminGetRacers, adminGetSegments, adminCreateChallenge, adminActivateChallenge, adminAddSegment,
   adminGetConnectedAthletes, adminDeauthorizeRacer, ConnectedAthlete,
   adminGetStravaSegment, adminCleanupConnectedAthletes, adminUpdateRacer,
-  adminGetChallenges, adminDeleteChallenge, adminGetAllSegments,
-  buildAdminLoginUrl, ChallengeInfo, SegmentInfo,
+  adminGetChallenges, adminDeleteChallenge, adminGetAllSegments, adminGetStarredSegments,
+  buildAdminLoginUrl, ChallengeInfo, SegmentInfo, StravaSegmentMetadata,
 } from '@/lib/api';
 
 type OpenApiOperation = {
@@ -84,12 +84,15 @@ function AdminContent() {
 
   // Add Segment state
   const [showAddSegment, setShowAddSegment] = useState(false);
-  const [segmentMode, setSegmentMode] = useState<'new' | 'reuse'>('new');
+  const [segmentMode, setSegmentMode] = useState<'new' | 'reuse' | 'starred'>('new');
   const [newStravaId, setNewStravaId] = useState('');
   const [segmentChallengeId, setSegmentChallengeId] = useState('');
   const [allSegments, setAllSegments] = useState<(SegmentInfo & { challengeName: string; challengeId: string })[]>([]);
   const [reuseSegmentId, setReuseSegmentId] = useState('');
   const [addSegmentStatus, setAddSegmentStatus] = useState('');
+  const [starredSegments, setStarredSegments] = useState<StravaSegmentMetadata[]>([]);
+  const [starredLoading, setStarredLoading] = useState(false);
+  const [importingStarred, setImportingStarred] = useState<number | null>(null);
 
   useEffect(() => {
     const urlToken = searchParams.get('token');
@@ -336,6 +339,37 @@ function AdminContent() {
     }
   }
 
+  async function loadStarredSegments() {
+    setStarredLoading(true);
+    try {
+      const res = await adminGetStarredSegments(token);
+      setStarredSegments(res.segments);
+    } catch (err) {
+      setAddSegmentStatus(`Error loading starred segments: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setStarredLoading(false);
+    }
+  }
+
+  async function handleImportStarred(seg: StravaSegmentMetadata) {
+    if (!segmentChallengeId) {
+      setAddSegmentStatus('Select a challenge first');
+      return;
+    }
+    setImportingStarred(seg.stravaSegmentId);
+    setAddSegmentStatus('');
+    try {
+      const detail = await adminGetStravaSegment(token, seg.stravaSegmentId);
+      await adminAddSegment(token, { ...detail, challengeId: segmentChallengeId });
+      setAddSegmentStatus(`Added "${seg.name}" successfully!`);
+      await loadData();
+    } catch (err) {
+      setAddSegmentStatus(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setImportingStarred(null);
+    }
+  }
+
   function downloadOpenApi() {
     const url = URL.createObjectURL(new Blob([openApiJson], { type: 'application/json' }));
     const link = document.createElement('a');
@@ -519,15 +553,14 @@ function AdminContent() {
             </label>
 
             <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
-              <button onClick={() => setSegmentMode('new')} style={{ ...btnStyle, ...(segmentMode === 'new' ? {} : { background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }), padding: '0.4rem 0.85rem' }}>
-                New Segment
-              </button>
-              <button onClick={() => setSegmentMode('reuse')} style={{ ...btnStyle, ...(segmentMode === 'reuse' ? {} : { background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }), padding: '0.4rem 0.85rem' }}>
-                Reuse Existing
-              </button>
+              {(['new', 'starred', 'reuse'] as const).map((mode) => (
+                <button key={mode} onClick={() => { setSegmentMode(mode); if (mode === 'starred' && starredSegments.length === 0) loadStarredSegments(); }} style={{ ...btnStyle, ...(segmentMode === mode ? {} : { background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }), padding: '0.4rem 0.85rem' }}>
+                  {{ new: 'New Segment', starred: 'Strava Starred', reuse: 'Reuse Existing' }[mode]}
+                </button>
+              ))}
             </div>
 
-            {segmentMode === 'new' ? (
+            {segmentMode === 'new' && (
               <form onSubmit={handleAddNewSegment} style={{ display: 'grid', gap: '0.75rem', maxWidth: '480px' }}>
                 <label style={labelStyle}>
                   <span style={labelTextStyle}>Strava Segment URL or ID</span>
@@ -535,7 +568,45 @@ function AdminContent() {
                 </label>
                 <button type="submit" style={btnStyle}>Fetch & Add</button>
               </form>
-            ) : (
+            )}
+
+            {segmentMode === 'starred' && (
+              <div>
+                {starredLoading && <p style={{ color: 'var(--color-muted)' }}>Loading starred segments from Strava...</p>}
+                {!starredLoading && starredSegments.length === 0 && (
+                  <p style={{ color: 'var(--color-muted)' }}>No starred segments found. Star segments on Strava to see them here.</p>
+                )}
+                {!starredLoading && starredSegments.length > 0 && (
+                  <div style={{ display: 'grid', gap: '0.5rem', maxHeight: '400px', overflowY: 'auto' }}>
+                    {starredSegments.map((seg) => (
+                      <div key={seg.stravaSegmentId} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+                        padding: '0.65rem 0.85rem', background: 'var(--color-background)', borderRadius: '6px',
+                        border: '1px solid var(--color-border)',
+                      }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{seg.name}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--color-muted)' }}>
+                            {Math.round(seg.distance)}m &middot; {Math.round(seg.elevationGain)}m gain
+                            {seg.city ? ` \u00b7 ${[seg.city, seg.state].filter(Boolean).join(', ')}` : ''}
+                            {seg.athleteCount ? ` \u00b7 ${seg.athleteCount} athletes` : ''}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleImportStarred(seg)}
+                          disabled={importingStarred === seg.stravaSegmentId}
+                          style={{ ...btnStyle, padding: '0.35rem 0.7rem', opacity: importingStarred === seg.stravaSegmentId ? 0.5 : 1 }}
+                        >
+                          {importingStarred === seg.stravaSegmentId ? 'Adding...' : 'Add'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {segmentMode === 'reuse' && (
               <form onSubmit={handleReuseSegment} style={{ display: 'grid', gap: '0.75rem', maxWidth: '480px' }}>
                 <label style={labelStyle}>
                   <span style={labelTextStyle}>Select segment from another challenge</span>
