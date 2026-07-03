@@ -1,18 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { RacerCategory } from '@enduro/domain';
-import { buildStravaOAuthUrl, getSegments } from '@/lib/api';
+import { buildStravaOAuthUrl } from '@/lib/api';
+import { useEvent } from '@/context';
 
 export default function RegisterPage() {
+  const { challengeId, challengeName, loading: eventLoading } = useEvent();
   const [category, setCategory] = useState<RacerCategory>(RacerCategory.MTB);
-  const [challengeId, setChallengeId] = useState('');
-
-  useEffect(() => {
-    getSegments()
-      .then((res) => setChallengeId(res.challengeId))
-      .catch(console.error);
-  }, []);
 
   function handleRegister() {
     if (!challengeId) return;
@@ -20,9 +15,23 @@ export default function RegisterPage() {
     window.location.href = url;
   }
 
+  if (!eventLoading && !challengeId) {
+    return (
+      <main style={{ maxWidth: '480px', margin: '4rem auto', padding: '0 1.5rem' }}>
+        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem' }}>Register</h1>
+        <p style={{ color: 'var(--color-muted)' }}>Select an event first to register.</p>
+      </main>
+    );
+  }
+
   return (
     <main style={{ maxWidth: '480px', margin: '4rem auto', padding: '0 1.5rem' }}>
       <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '0.5rem' }}>Register</h1>
+      {challengeName && (
+        <p style={{ color: 'var(--color-primary)', fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.95rem' }}>
+          {challengeName}
+        </p>
+      )}
       <p style={{ color: 'var(--color-muted)', marginBottom: '2rem' }}>
         Select your bike type, then connect with Strava. Your segment times will be tracked automatically.
       </p>

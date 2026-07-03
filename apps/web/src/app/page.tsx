@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { getChallenges, ChallengeInfo } from '@/lib/api';
+import { useEvent } from '@/context';
 
 function StatusBadge({ status, startDate, endDate }: { status: string; startDate: string; endDate: string }) {
   const now = new Date();
@@ -38,14 +39,17 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function ChallengeCard({ challenge, isActive }: { challenge: ChallengeInfo; isActive: boolean }) {
-  const inner = (
-    <div style={{
-      background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '8px',
-      padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem',
-      cursor: isActive ? 'pointer' : 'default',
-      transition: 'border-color 0.15s',
-    }}>
+function ChallengeCard({ challenge, onSelect }: { challenge: ChallengeInfo; onSelect: (id: string) => void }) {
+  return (
+    <div
+      onClick={() => onSelect(challenge.id)}
+      style={{
+        background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '8px',
+        padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem',
+        cursor: 'pointer',
+        transition: 'border-color 0.15s',
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
         <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0 }}>{challenge.name}</h3>
         <StatusBadge status={challenge.status} startDate={challenge.startDate} endDate={challenge.endDate} />
@@ -63,14 +67,9 @@ function ChallengeCard({ challenge, isActive }: { challenge: ChallengeInfo; isAc
       </div>
     </div>
   );
-
-  if (isActive) {
-    return <Link href={`/leaderboard?challengeId=${challenge.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>{inner}</Link>;
-  }
-  return inner;
 }
 
-function ChallengeSection({ title, challenges, isActive }: { title: string; challenges: ChallengeInfo[]; isActive: boolean }) {
+function ChallengeSection({ title, challenges, onSelect }: { title: string; challenges: ChallengeInfo[]; onSelect: (id: string) => void }) {
   if (challenges.length === 0) return null;
   return (
     <section style={{ marginBottom: '2.5rem' }}>
@@ -81,7 +80,7 @@ function ChallengeSection({ title, challenges, isActive }: { title: string; chal
         gap: '1rem',
         maxWidth: 'calc(5 * 240px + 4 * 1rem)',
       }}>
-        {challenges.map((c) => <ChallengeCard key={c.id} challenge={c} isActive={isActive} />)}
+        {challenges.map((c) => <ChallengeCard key={c.id} challenge={c} onSelect={onSelect} />)}
       </div>
     </section>
   );
@@ -90,26 +89,20 @@ function ChallengeSection({ title, challenges, isActive }: { title: string; chal
 export default function HomePage() {
   const [data, setData] = useState<{ active: ChallengeInfo[]; upcoming: ChallengeInfo[]; past: ChallengeInfo[] } | null>(null);
   const [error, setError] = useState('');
+  const { selectEvent } = useEvent();
+  const router = useRouter();
 
   useEffect(() => {
     getChallenges().then(setData).catch((err) => setError(err instanceof Error ? err.message : 'Failed to load challenges'));
   }, []);
 
+  function handleSelect(id: string) {
+    selectEvent(id);
+    router.push('/leaderboard');
+  }
+
   return (
     <main>
-      <header style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)', padding: '1rem 0' }}>
-        <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: '0.05em' }}>
-            SMM ENDURO CHALLENGE
-          </span>
-          <nav style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem' }}>
-            <Link href="/leaderboard">Leaderboard</Link>
-            <Link href="/riders">Riders</Link>
-            <Link href="/register">Register</Link>
-          </nav>
-        </div>
-      </header>
-
       <section style={{ textAlign: 'center', padding: '4rem 1.5rem 3rem' }}>
         <h1 style={{ fontSize: 'clamp(2rem, 6vw, 4rem)', fontWeight: 900, lineHeight: 1.1 }}>
           Santa Monica Mountains<br />
@@ -126,9 +119,9 @@ export default function HomePage() {
           {!data && !error && <p style={{ color: 'var(--color-muted)' }}>Loading challenges...</p>}
           {data && (
             <>
-              <ChallengeSection title="Active Challenges" challenges={data.active} isActive={true} />
-              <ChallengeSection title="Upcoming" challenges={data.upcoming} isActive={false} />
-              <ChallengeSection title="Past Challenges" challenges={data.past} isActive={false} />
+              <ChallengeSection title="Active Challenges" challenges={data.active} onSelect={handleSelect} />
+              <ChallengeSection title="Upcoming" challenges={data.upcoming} onSelect={handleSelect} />
+              <ChallengeSection title="Past Challenges" challenges={data.past} onSelect={handleSelect} />
               {data.active.length === 0 && data.upcoming.length === 0 && data.past.length === 0 && (
                 <p style={{ color: 'var(--color-muted)', textAlign: 'center' }}>No challenges yet.</p>
               )}

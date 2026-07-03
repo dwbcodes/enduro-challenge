@@ -41,8 +41,9 @@ export interface SegmentsResponse {
   segments: SegmentInfo[];
 }
 
-export function getSegments(): Promise<SegmentsResponse> {
-  return apiFetch('/segments');
+export function getSegments(challengeId?: string): Promise<SegmentsResponse> {
+  const query = challengeId ? `?challengeId=${challengeId}` : '';
+  return apiFetch(`/segments${query}`);
 }
 
 export interface LeaderboardEntry {
@@ -80,8 +81,9 @@ export interface RacersResponse {
   racers: RacerInfo[];
 }
 
-export function getRacers(): Promise<RacersResponse> {
-  return apiFetch('/racers');
+export function getRacers(challengeId?: string): Promise<RacersResponse> {
+  const query = challengeId ? `?challengeId=${challengeId}` : '';
+  return apiFetch(`/racers${query}`);
 }
 
 export interface ChallengeInfo {

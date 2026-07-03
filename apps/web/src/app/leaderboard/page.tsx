@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { LeaderboardCategory } from '@enduro/domain';
 import { getLeaderboard, getSegments, SegmentInfo, LeaderboardEntry, LeaderboardData } from '@/lib/api';
+import { useEvent } from '@/context';
 
 const SegmentMap = dynamic(() => import('@/components/SegmentMap'), { ssr: false });
 
@@ -297,13 +298,22 @@ function SegmentDetail({
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function LeaderboardPage() {
+  const { challengeId, challengeName, loading: eventLoading } = useEvent();
   const [segments, setSegments] = useState<SegmentInfo[]>([]);
   const [leaderboards, setLeaderboards] = useState<Record<string, SegmentLeaderboards>>({});
   const [selectedSegment, setSelectedSegment] = useState<SegmentInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getSegments()
+    if (eventLoading) return;
+    if (!challengeId) {
+      setSegments([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setSelectedSegment(null);
+    getSegments(challengeId)
       .then(async (res) => {
         setSegments(res.segments);
 
@@ -325,7 +335,18 @@ export default function LeaderboardPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [challengeId, eventLoading]);
+
+  if (!eventLoading && !challengeId) {
+    return (
+      <main style={{ padding: '2rem 0' }}>
+        <div className="container">
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem' }}>Leaderboard</h1>
+          <p style={{ color: 'var(--color-muted)' }}>Select an event to view the leaderboard.</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main style={{ padding: '2rem 0' }}>
@@ -334,7 +355,10 @@ export default function LeaderboardPage() {
           <SegmentDetail segment={selectedSegment} onBack={() => setSelectedSegment(null)} />
         ) : (
           <>
-            <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1.5rem' }}>Leaderboard</h1>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '0.3rem' }}>Leaderboard</h1>
+            {challengeName && (
+              <p style={{ color: 'var(--color-muted)', marginBottom: '1.5rem', fontSize: '0.95rem' }}>{challengeName}</p>
+            )}
 
             {loading && <p style={{ color: 'var(--color-muted)' }}>Loading segments...</p>}
 

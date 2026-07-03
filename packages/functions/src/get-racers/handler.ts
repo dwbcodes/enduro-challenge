@@ -4,8 +4,11 @@ import { ok, notFound, serverError } from '../shared/response';
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   try {
-    const challenge = await challengeRepository.findActive();
-    if (!challenge) return notFound('No active challenge');
+    const requestedId = event.queryStringParameters?.challengeId;
+    const challenge = requestedId
+      ? await challengeRepository.findById(requestedId)
+      : await challengeRepository.findActive();
+    if (!challenge) return notFound(requestedId ? 'Challenge not found' : 'No active challenge');
 
     const racers = await racerRepository.findByChallengeId(challenge.id);
     return ok({

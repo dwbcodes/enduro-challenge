@@ -2,22 +2,45 @@
 
 import { useEffect, useState } from 'react';
 import { getRacers, RacerInfo } from '@/lib/api';
+import { useEvent } from '@/context';
 
 export default function RidersPage() {
+  const { challengeId, challengeName, loading: eventLoading } = useEvent();
   const [racers, setRacers] = useState<RacerInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getRacers()
+    if (eventLoading) return;
+    if (!challengeId) {
+      setRacers([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    getRacers(challengeId)
       .then((res) => setRacers(res.racers))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [challengeId, eventLoading]);
+
+  if (!eventLoading && !challengeId) {
+    return (
+      <main style={{ padding: '2rem 0' }}>
+        <div className="container">
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem' }}>Riders</h1>
+          <p style={{ color: 'var(--color-muted)' }}>Select an event to view riders.</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main style={{ padding: '2rem 0' }}>
       <div className="container">
-        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '0.5rem' }}>Riders</h1>
+        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '0.3rem' }}>Riders</h1>
+        {challengeName && (
+          <p style={{ color: 'var(--color-muted)', marginBottom: '0.5rem', fontSize: '0.85rem' }}>{challengeName}</p>
+        )}
         <p style={{ color: 'var(--color-muted)', marginBottom: '1.5rem', fontSize: '0.95rem' }}>
           {racers.length} registered {racers.length === 1 ? 'rider' : 'riders'}
         </p>
