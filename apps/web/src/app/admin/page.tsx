@@ -574,7 +574,7 @@ function AdminContent() {
             ) : (
               <div style={{ display: 'grid', gap: '0.5rem' }}>
                 {draftChallenges.map((c) => (
-                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '0.75rem', background: 'var(--color-background)', borderRadius: '6px', border: '1px solid var(--color-border)' }}>
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '0.75rem', background: 'var(--color-bg)', borderRadius: '6px', border: '1px solid var(--color-border)' }}>
                     <div>
                       <div style={{ fontWeight: 600 }}>{c.name}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{c.startDate} to {c.endDate}</div>
@@ -636,7 +636,7 @@ function AdminContent() {
                     {starredSegments.map((seg) => (
                       <div key={seg.stravaSegmentId} style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
-                        padding: '0.65rem 0.85rem', background: 'var(--color-background)', borderRadius: '6px',
+                        padding: '0.65rem 0.85rem', background: 'var(--color-bg)', borderRadius: '6px',
                         border: '1px solid var(--color-border)',
                       }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -709,7 +709,7 @@ function AdminContent() {
                 {adminUsers.map((admin) => (
                   <div key={admin.stravaAthleteId} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
-                    padding: '0.75rem', background: 'var(--color-background)', borderRadius: '6px',
+                    padding: '0.75rem', background: 'var(--color-bg)', borderRadius: '6px',
                     border: '1px solid var(--color-border)',
                   }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -985,7 +985,7 @@ const textInputStyle: React.CSSProperties = {
   padding: '0.75rem',
   borderRadius: '6px',
   border: '1px solid var(--color-border)',
-  background: 'var(--color-background)',
+  background: 'var(--color-bg)',
   color: 'var(--color-text)',
   fontSize: '0.95rem',
 };
