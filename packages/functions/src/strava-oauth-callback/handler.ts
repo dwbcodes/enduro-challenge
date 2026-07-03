@@ -22,7 +22,6 @@ const ADMIN_ATHLETE_IDS = config.adminAthleteIds;
 interface OAuthState {
   intent?: 'admin_login';
   category?: RacerCategory;
-  sexCategory?: SexCategory;
   challengeId?: string;
 }
 
@@ -50,10 +49,10 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     // --- Registration flow ---
     if (!state.category || !Object.values(RacerCategory).includes(state.category)) return badRequest('Invalid bike category');
-    if (!state.sexCategory || !Object.values(SexCategory).includes(state.sexCategory)) return badRequest('Invalid sex category');
     if (!state.challengeId) return badRequest('Missing challenge ID');
     const athlete = await stravaClient.getAuthenticatedAthlete(tokenResponse.access_token);
     const isAdmin = ADMIN_ATHLETE_IDS.includes(athlete.id);
+    const sexCategory = resolveSexCategory(athlete.sex);
 
     const registerCommand = {
       stravaAthleteId: athlete.id,
@@ -85,7 +84,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       rawStravaProfile: athlete as unknown as Record<string, unknown>,
       category: state.category,
       ageGroup: resolveAgeGroup(athlete.birthday),
-      sexCategory: state.sexCategory,
+      sexCategory,
       challengeId: state.challengeId,
       accessToken: tokenResponse.access_token,
       refreshToken: tokenResponse.refresh_token,
@@ -151,6 +150,11 @@ async function handleAdminLogin(tokenResponse: StravaTokenResponse): Promise<API
   );
 
   return redirect(`${FRONTEND_URL}/admin?token=${token}`);
+}
+
+function resolveSexCategory(sex?: string): SexCategory {
+  if (sex === 'F') return SexCategory.FEMALE;
+  return SexCategory.MALE;
 }
 
 function resolveAgeGroup(birthday?: string): AgeGroup {

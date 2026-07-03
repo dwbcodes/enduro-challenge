@@ -108,10 +108,9 @@ export function getChallenges(): Promise<ChallengesResponse> {
 
 export function buildStravaOAuthUrl(
   category: RacerCategory,
-  sexCategory: SexCategory,
   challengeId: string,
 ): string {
-  const state = btoa(JSON.stringify({ category, sexCategory, challengeId }));
+  const state = btoa(JSON.stringify({ category, challengeId }));
   const params = new URLSearchParams({
     client_id: process.env.NEXT_PUBLIC_STRAVA_CLIENT_ID ?? '',
     redirect_uri: `${absoluteApiUrl()}/auth/callback`,
