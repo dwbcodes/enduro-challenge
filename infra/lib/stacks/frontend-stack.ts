@@ -22,8 +22,8 @@ export class FrontendStack extends cdk.Stack {
     const siteBucket = new s3.Bucket(this, 'SiteBucket', {
       bucketName: `enduro-challenge-site-${this.account}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      autoDeleteObjects: false,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
     });
 
     // Rewrite directory-style URIs to index.html for Next.js static export
