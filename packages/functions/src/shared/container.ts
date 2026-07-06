@@ -8,6 +8,7 @@ import {
   DynamoDBUserRepository,
   StravaCacheRepository,
   DynamoDBAdminRepository,
+  DynamoDBCreatorRepository,
   StravaClient,
 } from '@enduro/infrastructure';
 import {
@@ -32,6 +33,7 @@ export const leaderboardRepository = new DynamoDBLeaderboardRepository(docClient
 export const userRepository = new DynamoDBUserRepository(docClient);
 export const stravaCacheRepository = new StravaCacheRepository(docClient);
 export const adminRepository = new DynamoDBAdminRepository(docClient);
+export const creatorRepository = new DynamoDBCreatorRepository(docClient);
 
 // Strava client — credentials parsed from STRAVA_CONFIG JSON env var
 import { config } from './config';

@@ -136,6 +136,14 @@ export class ApiStack extends cdk.Stack {
     });
     table.grantReadData(challengesFn);
 
+    // --- Lambda: Get Creator Profile (public) ---
+    const creatorProfileFn = new lambdaNodejs.NodejsFunction(this, 'GetCreatorProfileFn', {
+      ...functionDefaults,
+      entry: path.join(functionsRoot, 'get-creator-profile/handler.ts'),
+      environment: commonEnv,
+    });
+    table.grantReadData(creatorProfileFn);
+
     // --- Lambda: Admin ---
     const adminFn = new lambdaNodejs.NodejsFunction(this, 'AdminFn', {
       ...functionDefaults,
@@ -197,6 +205,7 @@ export class ApiStack extends cdk.Stack {
     const segmentsIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('SegmentsIntegration', segmentsFn);
     const racersIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('RacersIntegration', racersFn);
     const challengesIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('ChallengesIntegration', challengesFn);
+    const creatorProfileIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('CreatorProfileIntegration', creatorProfileFn);
     const adminIntegration = new apigatewayv2Integrations.HttpLambdaIntegration('AdminIntegration', adminFn);
 
     api.addRoutes({ path: '/webhook', methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.POST], integration: webhookIntegration });
@@ -205,6 +214,7 @@ export class ApiStack extends cdk.Stack {
     api.addRoutes({ path: '/segments', methods: [apigatewayv2.HttpMethod.GET], integration: segmentsIntegration });
     api.addRoutes({ path: '/racers', methods: [apigatewayv2.HttpMethod.GET], integration: racersIntegration });
     api.addRoutes({ path: '/challenges', methods: [apigatewayv2.HttpMethod.GET], integration: challengesIntegration });
+    api.addRoutes({ path: '/creators/{slug}', methods: [apigatewayv2.HttpMethod.GET], integration: creatorProfileIntegration });
     api.addRoutes({ path: '/admin/{proxy+}', methods: [apigatewayv2.HttpMethod.ANY], integration: adminIntegration });
 
     this.apiUrl = api.apiEndpoint;

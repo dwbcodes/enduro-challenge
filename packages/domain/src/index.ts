@@ -42,3 +42,7 @@ export * from './participant/participant.repository';
 // Registration (new bounded context)
 export * from './registration/registration.entity';
 export * from './registration/registration.repository';
+
+// Creator
+export * from './creator/creator.entity';
+export * from './creator/creator.repository';

@@ -64,4 +64,12 @@ export const keys = {
     PK: `ADMIN#${stravaAthleteId}`,
     SK: '#META',
   }),
+  creator: (id: string) => ({
+    PK: `CREATOR#${id}`,
+    SK: '#PROFILE',
+  }),
+  creatorUsername: (username: string) => ({
+    PK: `CREATOR_USERNAME#${username.toLowerCase()}`,
+    SK: '#REF',
+  }),
 };

@@ -1,5 +1,5 @@
 import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { Challenge, ChallengeRepository } from '@enduro/domain';
+import { Challenge, ChallengeRepository, StravaActivityType } from '@enduro/domain';
 import { TABLE_NAME, keys } from './table';
 
 export class DynamoDBChallengeRepository implements ChallengeRepository {
@@ -25,6 +25,15 @@ export class DynamoDBChallengeRepository implements ChallengeRepository {
       TableName: TABLE_NAME,
       FilterExpression: 'begins_with(PK, :prefix) AND SK = :sk',
       ExpressionAttributeValues: { ':prefix': 'CHALLENGE#', ':sk': '#META' },
+    }));
+    return (result.Items ?? []).map((item) => this.toEntity(item));
+  }
+
+  async findByOwner(ownerAthleteId: number): Promise<Challenge[]> {
+    const result = await this.client.send(new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: 'begins_with(PK, :prefix) AND SK = :sk AND ownerAthleteId = :owner',
+      ExpressionAttributeValues: { ':prefix': 'CHALLENGE#', ':sk': '#META', ':owner': ownerAthleteId },
     }));
     return (result.Items ?? []).map((item) => this.toEntity(item));
   }
@@ -56,10 +65,13 @@ export class DynamoDBChallengeRepository implements ChallengeRepository {
     return Challenge.create(item['id'] as string, {
       name: item['name'] as string,
       description: item['description'] as string,
+      location: item['location'] as string | undefined,
       startDate: new Date(item['startDate'] as string),
       endDate: new Date(item['endDate'] as string),
+      activityTypes: ((item['activityTypes'] as string[]) ?? []) as StravaActivityType[],
       segmentIds: (item['segmentIds'] as string[]) ?? [],
       status: item['status'] as 'DRAFT' | 'ACTIVE' | 'COMPLETED',
+      ownerAthleteId: item['ownerAthleteId'] as number | undefined,
       createdAt: new Date(item['createdAt'] as string),
       updatedAt: new Date(item['updatedAt'] as string),
     });

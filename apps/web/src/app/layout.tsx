@@ -3,8 +3,8 @@ import './globals.css';
 import ClientProviders from './ClientProviders';
 
 export const metadata: Metadata = {
-  title: 'Santa Monica Mountains Enduro Challenge',
-  description: 'Compete on the iconic trails of the Santa Monica Mountains. Track your times on Strava segments, climb the leaderboard across MTB, eBike, and age categories.',
+  title: 'Fitness Challenge',
+  description: 'Create and join Strava-based fitness challenges. Track your times on segments, climb the leaderboard, and compete across categories.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -7,4 +7,5 @@ export * from './dynamodb/leaderboard.repository';
 export * from './dynamodb/user.repository';
 export * from './dynamodb/strava-cache.repository';
 export * from './dynamodb/admin.repository';
+export * from './dynamodb/creator.repository';
 export * from './strava/strava.client';

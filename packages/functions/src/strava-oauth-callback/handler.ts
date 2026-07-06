@@ -9,9 +9,11 @@
  */
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import jwt from 'jsonwebtoken';
-import { AgeGroup, RacerCategory, SexCategory } from '@enduro/domain';
+import { AgeGroup, RacerCategory, SexCategory, StravaActivityType } from '@enduro/domain';
 import { StravaTokenResponse } from '@enduro/infrastructure';
-import { stravaClient, registerRacerHandler, racerRepository, adminRepository } from '../shared/container';
+import { randomUUID } from 'crypto';
+import { Creator } from '@enduro/domain';
+import { stravaClient, registerRacerHandler, racerRepository, adminRepository, creatorRepository } from '../shared/container';
 import { badRequest, redirect, serverError } from '../shared/response';
 import { config } from '../shared/config';
 
@@ -19,9 +21,11 @@ const FRONTEND_URL = config.frontendUrl;
 const JWT_SECRET = config.jwtSecret;
 const ADMIN_ATHLETE_IDS = config.adminAthleteIds;
 
+const VALID_ACTIVITY_TYPES = new Set(Object.values(StravaActivityType) as string[]);
+
 interface OAuthState {
-  intent?: 'admin_login';
-  category?: RacerCategory;
+  intent?: 'admin_login' | 'creator_login';
+  category?: string; // StravaActivityType value or legacy RacerCategory
   challengeId?: string;
 }
 
@@ -47,8 +51,17 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       return handleAdminLogin(tokenResponse);
     }
 
+    // --- Creator login flow ---
+    if (state.intent === 'creator_login') {
+      return handleCreatorLogin(tokenResponse);
+    }
+
     // --- Registration flow ---
-    if (!state.category || !Object.values(RacerCategory).includes(state.category)) return badRequest('Invalid bike category');
+    const category = state.category || 'ALL';
+    const isValidCategory = category === 'ALL'
+      || Object.values(RacerCategory).includes(category as RacerCategory)
+      || VALID_ACTIVITY_TYPES.has(category);
+    if (!isValidCategory) return badRequest('Invalid category');
     if (!state.challengeId) return badRequest('Missing challenge ID');
     const athlete = await stravaClient.getAuthenticatedAthlete(tokenResponse.access_token);
     const isAdmin = ADMIN_ATHLETE_IDS.includes(athlete.id) || await adminRepository.isAdmin(athlete.id);
@@ -82,7 +95,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       bikes: athlete.bikes,
       shoes: athlete.shoes,
       rawStravaProfile: athlete as unknown as Record<string, unknown>,
-      category: state.category,
+      category,
       ageGroup: resolveAgeGroup(athlete.birthday),
       sexCategory,
       challengeId: state.challengeId,
@@ -96,7 +109,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     // The DynamoDB stream cleanup Lambda revokes and deletes stored Strava tokens.
     if (!isAdmin) {
-      return redirect(`${FRONTEND_URL}/register/success`);
+      return redirect(`${FRONTEND_URL}/register/success?challengeId=${state.challengeId}&sex=${sexCategory}`);
     }
 
     const token = jwt.sign(
@@ -105,12 +118,13 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         stravaAthleteId: athlete.id,
         name: `${athlete.firstname} ${athlete.lastname}`,
         isAdmin,
+        isSuperAdmin: ADMIN_ATHLETE_IDS.includes(athlete.id),
       },
       JWT_SECRET,
       { expiresIn: '90d' },
     );
 
-    return redirect(`${FRONTEND_URL}/register/success?token=${token}`);
+    return redirect(`${FRONTEND_URL}/register/success?token=${token}&challengeId=${state.challengeId}&sex=${sexCategory}`);
   } catch (err) {
     return serverError(err);
   }
@@ -144,12 +158,90 @@ async function handleAdminLogin(tokenResponse: StravaTokenResponse): Promise<API
       stravaAthleteId: athlete.id,
       name: `${athlete.firstname} ${athlete.lastname}`,
       isAdmin: true,
+      isSuperAdmin: ADMIN_ATHLETE_IDS.includes(athlete.id),
     },
     JWT_SECRET,
     { expiresIn: '90d' },
   );
 
   return redirect(`${FRONTEND_URL}/admin?token=${token}`);
+}
+
+async function handleCreatorLogin(tokenResponse: StravaTokenResponse): Promise<APIGatewayProxyResultV2> {
+  const athlete = tokenResponse.athlete;
+
+  // Find or create creator record
+  let creator = await creatorRepository.findByStravaAthleteId(athlete.id);
+  if (!creator) {
+    const creatorId = randomUUID();
+    const now = new Date();
+    creator = Creator.create(creatorId, {
+      stravaAthleteId: athlete.id,
+      firstName: athlete.firstname,
+      lastName: athlete.lastname,
+      profileImageUrl: athlete.profile ?? '',
+      username: athlete.username || undefined,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await creatorRepository.save(creator);
+
+    // Auto-add as admin so they can use admin routes for challenge management
+    const isAlreadyAdmin = ADMIN_ATHLETE_IDS.includes(athlete.id) || await adminRepository.isAdmin(athlete.id);
+    if (!isAlreadyAdmin) {
+      await adminRepository.add({
+        stravaAthleteId: athlete.id,
+        name: `${athlete.firstname} ${athlete.lastname}`,
+        addedAt: new Date().toISOString(),
+        addedBy: 'creator_signup',
+      });
+    }
+  }
+
+  // Update username if it changed
+  if (athlete.username && creator.username !== athlete.username) {
+    creator = Creator.create(creator.id, {
+      stravaAthleteId: creator.stravaAthleteId,
+      firstName: creator.firstName,
+      lastName: creator.lastName,
+      profileImageUrl: creator.profileImageUrl,
+      username: athlete.username,
+      stravaApp: creator.stravaApp,
+      createdAt: creator.createdAt,
+      updatedAt: new Date(),
+    });
+    await creatorRepository.save(creator);
+  }
+
+  // Save/update Strava token so server-side Strava API calls work
+  const existingRacer = await racerRepository.findByStravaAthleteId(athlete.id);
+  if (existingRacer) {
+    await racerRepository.saveToken({
+      racerId: existingRacer.id,
+      accessToken: tokenResponse.access_token,
+      refreshToken: tokenResponse.refresh_token,
+      expiresAt: tokenResponse.expires_at,
+      scope: tokenResponse.scope ?? 'read',
+    });
+  }
+
+  const creatorSlug = creator.slug;
+
+  const token = jwt.sign(
+    {
+      racerId: existingRacer?.id ?? '',
+      stravaAthleteId: athlete.id,
+      name: `${athlete.firstname} ${athlete.lastname}`,
+      isAdmin: true,
+      isCreator: true,
+      isSuperAdmin: ADMIN_ATHLETE_IDS.includes(athlete.id),
+      creatorSlug,
+    },
+    JWT_SECRET,
+    { expiresIn: '90d' },
+  );
+
+  return redirect(`${FRONTEND_URL}/c?slug=${encodeURIComponent(creatorSlug)}&token=${token}`);
 }
 
 function resolveSexCategory(sex?: string): SexCategory {
@@ -170,6 +262,7 @@ function resolveAgeGroup(birthday?: string): AgeGroup {
     (now.getUTCMonth() === birthDate.getUTCMonth() && now.getUTCDate() >= birthDate.getUTCDate());
   if (!hasHadBirthdayThisYear) age--;
 
+  if (age < 18) return AgeGroup.UNDER_18;
   if (age < 30) return AgeGroup.UNDER_30;
   if (age < 40) return AgeGroup.AGE_30_39;
   if (age < 50) return AgeGroup.AGE_40_49;

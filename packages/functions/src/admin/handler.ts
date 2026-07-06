@@ -12,7 +12,7 @@
  */
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import jwt from 'jsonwebtoken';
-import { AgeGroup, Racer, RacerCategory, SexCategory } from '@enduro/domain';
+import { AgeGroup, Racer, RacerCategory, SexCategory, StravaActivityType } from '@enduro/domain';
 import {
   challengeRepository,
   racerRepository,
@@ -20,6 +20,7 @@ import {
   resultRepository,
   leaderboardRepository,
   adminRepository,
+  creatorRepository,
   stravaClient,
   createChallengeHandler,
   addSegmentHandler,
@@ -34,6 +35,11 @@ interface AdminToken {
   racerId: string;
   stravaAthleteId: number;
   isAdmin: boolean;
+  isSuperAdmin?: boolean;
+}
+
+function isSuperAdmin(stravaAthleteId: number): boolean {
+  return config.adminAthleteIds.includes(stravaAthleteId);
 }
 
 function verifyAdmin(event: APIGatewayProxyEventV2): AdminToken | null {
@@ -83,13 +89,16 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     // POST /admin/challenges
     if (method === 'POST' && path === '/admin/challenges') {
       const body = JSON.parse(event.body ?? '{}') as CreateChallengeCommand;
+      body.ownerAthleteId = admin.stravaAthleteId;
       const id = await createChallengeHandler.execute(body);
       return created({ id });
     }
 
     // GET /admin/challenges
     if (method === 'GET' && path === '/admin/challenges') {
-      const challenges = await challengeRepository.findAll();
+      const challenges = isSuperAdmin(admin.stravaAthleteId)
+        ? await challengeRepository.findAll()
+        : await challengeRepository.findByOwner(admin.stravaAthleteId);
       return ok({ challenges: challenges.map((c) => c.toJSON()) });
     }
 
@@ -98,6 +107,9 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       const challengeId = path.match(/^\/admin\/challenges\/([^/]+)\/activate$/)?.[1] ?? '';
       const challenge = await challengeRepository.findById(challengeId);
       if (!challenge) return notFound('Challenge not found');
+      if (!isSuperAdmin(admin.stravaAthleteId) && challenge.ownerAthleteId !== admin.stravaAthleteId) {
+        return unauthorized();
+      }
       await challengeRepository.save(challenge.activate());
       return ok({ activated: true });
     }
@@ -182,7 +194,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       if (!racer) return notFound('Racer not found');
 
       const body = JSON.parse(event.body ?? '{}') as {
-        category?: RacerCategory;
+        category?: string;
         ageGroup?: AgeGroup;
         sexCategory?: SexCategory;
       };
@@ -191,7 +203,12 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       const ageGroup = body.ageGroup ?? racer.ageGroup;
       const sexCategory = body.sexCategory ?? racer.sexCategory;
 
-      if (!Object.values(RacerCategory).includes(category)) return badRequest('Invalid bike category');
+      const validCategories = new Set([
+        'ALL',
+        ...Object.values(RacerCategory) as string[],
+        ...Object.values(StravaActivityType) as string[],
+      ]);
+      if (!validCategories.has(category)) return badRequest('Invalid category');
       if (!Object.values(AgeGroup).includes(ageGroup)) return badRequest('Invalid age group');
       if (!Object.values(SexCategory).includes(sexCategory)) return badRequest('Invalid sex category');
 
@@ -303,6 +320,9 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       const challengeId = deleteChallengeMatch[1];
       const challenge = await challengeRepository.findById(challengeId);
       if (!challenge) return notFound('Challenge not found');
+      if (!isSuperAdmin(admin.stravaAthleteId) && challenge.ownerAthleteId !== admin.stravaAthleteId) {
+        return unauthorized();
+      }
 
       const segments = await segmentRepository.findByChallengeId(challengeId);
       for (const seg of segments) {
@@ -359,6 +379,26 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       }
       await adminRepository.remove(targetId);
       return ok({ removed: true, stravaAthleteId: targetId });
+    }
+
+    // GET /admin/creator/profile
+    if (method === 'GET' && path === '/admin/creator/profile') {
+      const creator = await creatorRepository.findByStravaAthleteId(admin.stravaAthleteId);
+      if (!creator) return notFound('Creator profile not found');
+      return ok({ creator: creator.toJSON() });
+    }
+
+    // PUT /admin/creator/strava-app
+    if (method === 'PUT' && path === '/admin/creator/strava-app') {
+      const body = JSON.parse(event.body ?? '{}') as { clientId?: string; clientSecret?: string };
+      if (!body.clientId || !body.clientSecret) return badRequest('clientId and clientSecret are required');
+
+      const creator = await creatorRepository.findByStravaAthleteId(admin.stravaAthleteId);
+      if (!creator) return notFound('Creator profile not found');
+
+      const updated = creator.updateStravaApp({ clientId: body.clientId, clientSecret: body.clientSecret });
+      await creatorRepository.save(updated);
+      return ok({ updated: true, hasStravaApp: true });
     }
 
     return notFound('Unknown admin route');

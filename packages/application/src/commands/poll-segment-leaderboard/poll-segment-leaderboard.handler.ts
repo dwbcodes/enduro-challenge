@@ -6,9 +6,7 @@ import {
   LeaderboardCategory,
   LeaderboardEntry,
   Racer,
-  RacerCategory,
   AgeGroup,
-  SexCategory,
 } from '@enduro/domain';
 import { PollSegmentLeaderboardCommand } from './poll-segment-leaderboard.command';
 
@@ -58,7 +56,7 @@ export class PollSegmentLeaderboardHandler {
   }
 
   private async updateLeaderboards(racer: Racer, result: Result): Promise<void> {
-    const categories = this.resolveCategories(racer.category, racer.ageGroup, racer.sexCategory);
+    const categories = this.resolveCategories(racer.ageGroup);
 
     for (const category of categories) {
       const entry: LeaderboardEntry = {
@@ -74,8 +72,9 @@ export class PollSegmentLeaderboardHandler {
     }
   }
 
-  private resolveCategories(racerCategory: RacerCategory, ageGroup: AgeGroup, sexCategory: SexCategory): LeaderboardCategory[] {
+  private resolveCategories(ageGroup: AgeGroup): LeaderboardCategory[] {
     const ageMap: Record<AgeGroup, LeaderboardCategory> = {
+      [AgeGroup.UNDER_18]: LeaderboardCategory.AGE_U18,
       [AgeGroup.UNDER_30]: LeaderboardCategory.AGE_U30,
       [AgeGroup.AGE_30_39]: LeaderboardCategory.AGE_30_39,
       [AgeGroup.AGE_40_49]: LeaderboardCategory.AGE_40_49,
@@ -83,21 +82,8 @@ export class PollSegmentLeaderboardHandler {
       [AgeGroup.AGE_60_PLUS]: LeaderboardCategory.AGE_60_PLUS,
     };
 
-    const bikeCategoryMap: Record<RacerCategory, LeaderboardCategory[]> = {
-      [RacerCategory.MTB]: [LeaderboardCategory.MTB],
-      [RacerCategory.EBIKE]: [LeaderboardCategory.EBIKE],
-      [RacerCategory.BOTH]: [LeaderboardCategory.MTB, LeaderboardCategory.EBIKE],
-    };
-
-    const sexCategoryMap: Record<SexCategory, LeaderboardCategory> = {
-      [SexCategory.MALE]: LeaderboardCategory.MALE,
-      [SexCategory.FEMALE]: LeaderboardCategory.FEMALE,
-    };
-
     return [
       LeaderboardCategory.OVERALL,
-      ...bikeCategoryMap[racerCategory],
-      sexCategoryMap[sexCategory],
       ageMap[ageGroup],
     ];
   }

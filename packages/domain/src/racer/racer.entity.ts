@@ -7,6 +7,7 @@ export enum RacerCategory {
 }
 
 export enum AgeGroup {
+  UNDER_18 = 'U18',
   UNDER_30 = 'U30',
   AGE_30_39 = '30-39',
   AGE_40_49 = '40-49',
@@ -24,7 +25,7 @@ export interface RacerProps {
   firstName: string;
   lastName: string;
   profileImageUrl: string;
-  category: RacerCategory;
+  category: RacerCategory | string;
   ageGroup: AgeGroup;
   sexCategory: SexCategory;
   challengeId: string;
@@ -49,7 +50,7 @@ export class Racer extends Entity<string> {
   get lastName(): string { return this.props.lastName; }
   get fullName(): string { return `${this.props.firstName} ${this.props.lastName}`; }
   get profileImageUrl(): string { return this.props.profileImageUrl; }
-  get category(): RacerCategory { return this.props.category; }
+  get category(): RacerCategory | string { return this.props.category; }
   get ageGroup(): AgeGroup { return this.props.ageGroup; }
   get sexCategory(): SexCategory { return this.props.sexCategory; }
   get challengeId(): string { return this.props.challengeId; }

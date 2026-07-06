@@ -90,16 +90,35 @@ export interface ChallengeInfo {
   id: string;
   name: string;
   description: string;
+  location?: string;
   startDate: string;
   endDate: string;
+  activityTypes: string[];
   status: string;
   segmentIds: string[];
+  ownerAthleteId?: number;
+  hostedBy?: string;
+  ownerProfileImageUrl?: string;
+  ownerSlug?: string;
+  racerCount?: number;
+  racerAvatars?: string[];
+  topMen?: { name: string; profileImageUrl: string }[];
+  topWomen?: { name: string; profileImageUrl: string }[];
+}
+
+export interface CreatorSummary {
+  slug: string;
+  name: string;
+  profileImageUrl: string;
+  challengeCount: number;
+  totalRacers: number;
 }
 
 export interface ChallengesResponse {
   active: ChallengeInfo[];
   upcoming: ChallengeInfo[];
   past: ChallengeInfo[];
+  topCreators?: CreatorSummary[];
 }
 
 export function getChallenges(): Promise<ChallengesResponse> {
@@ -109,7 +128,7 @@ export function getChallenges(): Promise<ChallengesResponse> {
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export function buildStravaOAuthUrl(
-  category: RacerCategory,
+  category: string,
   challengeId: string,
 ): string {
   const state = btoa(JSON.stringify({ category, challengeId }));
@@ -128,6 +147,21 @@ export function buildStravaOAuthUrl(
 
 export function buildAdminLoginUrl(): string {
   const state = btoa(JSON.stringify({ intent: 'admin_login' }));
+  const params = new URLSearchParams({
+    client_id: process.env.NEXT_PUBLIC_STRAVA_CLIENT_ID ?? '',
+    redirect_uri: `${absoluteApiUrl()}/auth/callback`,
+    response_type: 'code',
+    approval_prompt: 'auto',
+    scope: 'read',
+    state,
+  });
+  return `https://www.strava.com/oauth/authorize?${params.toString()}`;
+}
+
+// ─── Creator Login ────────────────────────────────────────────────────────────
+
+export function buildCreatorLoginUrl(): string {
+  const state = btoa(JSON.stringify({ intent: 'creator_login' }));
   const params = new URLSearchParams({
     client_id: process.env.NEXT_PUBLIC_STRAVA_CLIENT_ID ?? '',
     redirect_uri: `${absoluteApiUrl()}/auth/callback`,
@@ -280,5 +314,50 @@ export function adminRemoveAdmin(token: string, stravaAthleteId: number) {
   return apiFetch(`/admin/admins/${stravaAthleteId}`, {
     method: 'DELETE',
     headers: authHeaders(token),
+  });
+}
+
+// ─── Creator ──────────────────────────────────────────────────────────────────
+
+export interface CreatorProfile {
+  id: string;
+  stravaAthleteId: number;
+  firstName: string;
+  lastName: string;
+  profileImageUrl: string;
+  username?: string;
+  slug?: string;
+  hasStravaApp: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatorPublicProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  profileImageUrl: string;
+  username?: string;
+  slug: string;
+}
+
+export interface CreatorPublicProfileResponse {
+  creator: CreatorPublicProfile;
+  challenges: ChallengeInfo[];
+}
+
+export function getCreatorPublicProfile(slug: string): Promise<CreatorPublicProfileResponse> {
+  return apiFetch(`/creators/${encodeURIComponent(slug)}`);
+}
+
+export function getCreatorProfile(token: string): Promise<{ creator: CreatorProfile }> {
+  return apiFetch('/admin/creator/profile', { headers: authHeaders(token) });
+}
+
+export function updateCreatorStravaApp(token: string, clientId: string, clientSecret: string) {
+  return apiFetch('/admin/creator/strava-app', {
+    method: 'PUT',
+    headers: authHeaders(token),
+    body: JSON.stringify({ clientId, clientSecret }),
   });
 }

@@ -1,13 +1,20 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --color-bg: #0d0d0d;
-  --color-surface: #1a1a1a;
-  --color-border: #2a2a2a;
+  --color-bg: #0a0a0a;
+  --color-surface: #151515;
+  --color-surface-hover: #1e1e1e;
+  --color-border: #262626;
   --color-primary: #e8521a;
+  --color-primary-hover: #f06830;
   --color-text: #f0f0f0;
   --color-muted: #888;
   --font: 'Inter', system-ui, sans-serif;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --transition-fast: all 150ms ease;
+  --radius: 10px;
+  color-scheme: dark;
 }
 
 body {
@@ -15,9 +22,38 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-a { color: var(--color-primary); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a { color: var(--color-primary); text-decoration: none; transition: color 150ms ease; }
+a:hover { color: var(--color-primary-hover); text-decoration: none; }
 
 .container { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; }
+
+/* Smooth scrolling */
+html { scroll-behavior: smooth; }
+
+/* Selection color */
+::selection { background: rgba(232, 82, 26, 0.3); }
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Input styling */
+input, select, textarea {
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px rgba(232, 82, 26, 0.15);
+  outline: none;
+}
+
+/* Button base */
+button {
+  transition: all 150ms ease;
+}

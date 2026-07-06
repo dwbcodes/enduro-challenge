@@ -18,15 +18,30 @@ export class DynamoDBRacerRepository implements RacerRepository {
     const result = await this.client.send(new QueryCommand({
       TableName: TABLE_NAME,
       IndexName: GSI1,
-      KeyConditionExpression: 'GSI1PK = :pk AND GSI1SK = :sk',
+      KeyConditionExpression: 'GSI1PK = :pk',
+      FilterExpression: 'entityType = :et',
       ExpressionAttributeValues: {
         ':pk': `STRAVA_ATHLETE#${stravaAthleteId}`,
-        ':sk': '#PROFILE',
+        ':et': 'RACER',
       },
       Limit: 1,
     }));
     const item = result.Items?.[0];
     return item ? this.toEntity(item) : null;
+  }
+
+  async findAllByStravaAthleteId(stravaAthleteId: number): Promise<Racer[]> {
+    const result = await this.client.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      IndexName: GSI1,
+      KeyConditionExpression: 'GSI1PK = :pk',
+      FilterExpression: 'entityType = :et',
+      ExpressionAttributeValues: {
+        ':pk': `STRAVA_ATHLETE#${stravaAthleteId}`,
+        ':et': 'RACER',
+      },
+    }));
+    return (result.Items ?? []).map((item) => this.toEntity(item));
   }
 
   async findByChallengeId(challengeId: string): Promise<Racer[]> {
@@ -45,7 +60,7 @@ export class DynamoDBRacerRepository implements RacerRepository {
       Item: {
         ...keys.racerProfile(racer.id),
         GSI1PK: `STRAVA_ATHLETE#${racer.stravaAthleteId}`,
-        GSI1SK: '#PROFILE',
+        GSI1SK: `CHALLENGE#${racer.challengeId}`,
         entityType: 'RACER',
         ...json,
         registeredAt: json.registeredAt.toISOString(),

@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { AgeGroup, RacerCategory, SexCategory } from '@enduro/domain';
+import { AgeGroup, RacerCategory, SexCategory, StravaActivityType, STRAVA_ACTIVITY_TYPE_LABELS, LEADERBOARD_CATEGORY_LABELS } from '@enduro/domain';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   adminGetRacers, adminGetSegments, adminCreateChallenge, adminActivateChallenge, adminAddSegment,
@@ -9,8 +9,12 @@ import {
   adminGetStravaSegment, adminCleanupConnectedAthletes, adminUpdateRacer,
   adminGetChallenges, adminDeleteChallenge, adminGetAllSegments, adminGetStarredSegments,
   adminGetAdmins, adminAddAdmin, adminRemoveAdmin, AdminUser,
-  buildAdminLoginUrl, ChallengeInfo, SegmentInfo, StravaSegmentMetadata,
+  buildAdminLoginUrl, buildCreatorLoginUrl, ChallengeInfo, SegmentInfo, StravaSegmentMetadata,
 } from '@/lib/api';
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 type OpenApiOperation = {
   summary?: string;
@@ -74,8 +78,10 @@ function AdminContent() {
   // Create Challenge form state
   const [createName, setCreateName] = useState('');
   const [createDescription, setCreateDescription] = useState('');
+  const [createLocation, setCreateLocation] = useState('');
   const [createStartDate, setCreateStartDate] = useState('');
   const [createEndDate, setCreateEndDate] = useState('');
+  const [createActivityTypes, setCreateActivityTypes] = useState<StravaActivityType[]>([StravaActivityType.RIDE]);
   const [createStatus, setCreateStatus] = useState('');
 
   // Activate Challenge state
@@ -229,14 +235,18 @@ function AdminContent() {
       const res = await adminCreateChallenge(token, {
         name: createName,
         description: createDescription,
+        location: createLocation || undefined,
         startDate: createStartDate,
         endDate: createEndDate,
+        activityTypes: createActivityTypes,
       }) as { id: string };
       setCreateStatus(`Created challenge ${res.id}`);
       setCreateName('');
       setCreateDescription('');
+      setCreateLocation('');
       setCreateStartDate('');
       setCreateEndDate('');
+      setCreateActivityTypes([StravaActivityType.RIDE]);
       await loadData();
     } catch (err) {
       setCreateStatus(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -496,13 +506,33 @@ function AdminContent() {
     return (
       <main style={{ maxWidth: '420px', margin: '6rem auto', padding: '0 1.5rem', textAlign: 'center' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/logo.png" alt="SMM Enduro Challenge" style={{ maxWidth: '200px', marginBottom: '2rem' }} />
+        <img src="/images/logo.png" alt="Fitness Challenge" style={{ maxWidth: '200px', marginBottom: '2rem' }} />
         <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '1rem' }}>Admin</h1>
         <p style={{ color: 'var(--color-muted)', marginBottom: '2rem' }}>
           Sign in with your Strava account to access the admin panel.
         </p>
         {loginError && (
-          <p style={{ color: '#dc3545', marginBottom: '1.5rem', fontWeight: 600 }}>{loginError}</p>
+          <>
+            <p style={{ color: '#dc3545', marginBottom: '1rem', fontWeight: 600 }}>{loginError}</p>
+            <div style={{
+              background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+              borderRadius: '8px', padding: '1.25rem', marginBottom: '2rem', textAlign: 'left',
+            }}>
+              <p style={{ fontSize: '0.9rem', color: 'var(--color-muted)', marginBottom: '0.75rem' }}>
+                Not an admin yet? Become a challenge creator to set up and manage your own events.
+              </p>
+              <a
+                href="/creator"
+                style={{
+                  display: 'inline-block', padding: '0.5rem 1.25rem',
+                  background: 'var(--color-primary)', color: '#fff', borderRadius: '6px',
+                  fontWeight: 600, textDecoration: 'none', fontSize: '0.9rem',
+                }}
+              >
+                Become a Creator
+              </a>
+            </div>
+          </>
         )}
         <a
           href={buildAdminLoginUrl()}
@@ -514,6 +544,15 @@ function AdminContent() {
         >
           Login with Strava
         </a>
+        {!loginError && (
+          <p style={{ color: 'var(--color-muted)', fontSize: '0.85rem', marginTop: '1.5rem' }}>
+            Not an admin?{' '}
+            <a href="/creator" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
+              Become a Creator
+            </a>{' '}
+            to set up your own challenges.
+          </p>
+        )}
       </main>
     );
   }
@@ -572,6 +611,10 @@ function AdminContent() {
                 <span style={labelTextStyle}>Description</span>
                 <textarea value={createDescription} onChange={(e) => setCreateDescription(e.target.value)} rows={2} style={{ ...textInputStyle, resize: 'vertical' }} placeholder="Optional description" />
               </label>
+              <label style={labelStyle}>
+                <span style={labelTextStyle}>Location</span>
+                <input value={createLocation} onChange={(e) => setCreateLocation(e.target.value)} style={textInputStyle} placeholder="e.g. Santa Monica Mountains, CA" />
+              </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <label style={labelStyle}>
                   <span style={labelTextStyle}>Start Date</span>
@@ -582,8 +625,44 @@ function AdminContent() {
                   <input type="date" value={createEndDate} onChange={(e) => setCreateEndDate(e.target.value)} required style={textInputStyle} />
                 </label>
               </div>
+              <fieldset style={{ border: '1px solid var(--color-border)', borderRadius: '6px', padding: '0.75rem', margin: 0 }}>
+                <legend style={{ ...labelTextStyle, padding: '0 0.25rem' }}>Activity Types (up to 5)</legend>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {Object.values(StravaActivityType).map((type) => {
+                    const checked = createActivityTypes.includes(type);
+                    return (
+                      <label key={type} style={{
+                        display: 'flex', alignItems: 'center', gap: '0.35rem',
+                        padding: '0.35rem 0.65rem', borderRadius: '4px', cursor: 'pointer',
+                        background: checked ? 'var(--color-accent, #fc4c02)' : 'var(--color-bg)',
+                        color: checked ? '#fff' : 'inherit',
+                        border: `1px solid ${checked ? 'var(--color-accent, #fc4c02)' : 'var(--color-border)'}`,
+                        fontSize: '0.82rem', fontWeight: checked ? 600 : 400,
+                        transition: 'all 0.15s',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setCreateActivityTypes((prev) =>
+                              checked
+                                ? prev.filter((t) => t !== type)
+                                : prev.length >= 5 ? prev : [...prev, type]
+                            );
+                          }}
+                          style={{ display: 'none' }}
+                        />
+                        {STRAVA_ACTIVITY_TYPE_LABELS[type]}
+                      </label>
+                    );
+                  })}
+                </div>
+                {createActivityTypes.length === 0 && (
+                  <p style={{ fontSize: '0.75rem', color: '#dc3545', margin: '0.5rem 0 0' }}>Select at least one activity type</p>
+                )}
+              </fieldset>
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                <button type="submit" style={btnStyle}>Create</button>
+                <button type="submit" disabled={createActivityTypes.length === 0} style={{ ...btnStyle, opacity: createActivityTypes.length === 0 ? 0.5 : 1 }}>Create</button>
                 <button type="button" onClick={() => setActivePanel(null)} style={{ ...btnStyle, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}>Cancel</button>
               </div>
               {createStatus && <p style={{ fontSize: '0.85rem', color: createStatus.startsWith('Error') ? '#dc3545' : '#16a34a', margin: 0 }}>{createStatus}</p>}
@@ -606,7 +685,7 @@ function AdminContent() {
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '0.75rem', background: 'var(--color-bg)', borderRadius: '6px', border: '1px solid var(--color-border)' }}>
                     <div>
                       <div style={{ fontWeight: 600 }}>{c.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{c.startDate} to {c.endDate}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{formatDate(c.startDate)} – {formatDate(c.endDate)}</div>
                     </div>
                     <button onClick={() => handleActivate(c.id)} disabled={activatingId === c.id} style={{ ...btnStyle, padding: '0.4rem 0.85rem', opacity: activatingId === c.id ? 0.5 : 1 }}>
                       {activatingId === c.id ? 'Activating...' : 'Activate'}
@@ -789,7 +868,8 @@ function AdminContent() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>{c.name}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
-                      {c.status} &middot; {c.startDate} to {c.endDate} &middot; {c.segmentIds.length} segments
+                      {c.status} &middot; {formatDate(c.startDate)} – {formatDate(c.endDate)} &middot; {c.segmentIds.length} segments
+                      {c.activityTypes?.length > 0 && ` · ${c.activityTypes.map((t: string) => STRAVA_ACTIVITY_TYPE_LABELS[t as StravaActivityType] ?? t).join(', ')}`}
                     </div>
                   </div>
                   <button

@@ -28,7 +28,7 @@ export interface RegisterRacerCommand {
   bikes?: unknown[];
   shoes?: unknown[];
   rawStravaProfile?: Record<string, unknown>;
-  category: RacerCategory;
+  category: RacerCategory | string;
   ageGroup: AgeGroup;
   sexCategory: SexCategory;
   challengeId: string;

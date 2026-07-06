@@ -1,6 +1,6 @@
-# Santa Monica Mountains Enduro Challenge
+# Fitness Challenge Platform
 
-A Strava-integrated winter enduro challenge platform for the Santa Monica Mountains. Riders compete on tracked Strava segments — times are synced automatically and ranked across MTB, eBike, and age group categories.
+A multi-tenant Strava-based fitness challenge platform. Creators set up challenges with tracked Strava segments — rider times are synced automatically and ranked across activity type, sex, and age group categories. Each creator gets a public profile page showcasing their challenges.
 
 ## Architecture
 
@@ -171,6 +171,18 @@ abc123.execute-api.us-east-1.amazonaws.com
 
 ---
 
+## Creator Onboarding
+
+Creators sign up by authenticating with Strava on the `/creator` page. This creates a Creator entity and redirects to their profile at `/c?slug=<username>`. From the dashboard, creators:
+
+1. Set up their own Strava API application credentials
+2. Create challenges with segments, dates, and activity types
+3. Share their profile URL for riders to discover and join challenges
+
+Each creator's challenges appear on their public profile page and in the main challenge directory on the homepage.
+
+---
+
 ## Development
 
 ```bash
@@ -202,6 +214,7 @@ cd infra && npx cdk deploy EnduroFrontend
 | `packages/functions/src/process-activity/` | SQS consumer — updates best times + leaderboards |
 | `packages/functions/src/strava-oauth-callback/` | OAuth callback → create racer → issue JWT |
 | `packages/functions/src/get-leaderboard/` | Public leaderboard endpoint |
+| `packages/functions/src/get-creator-profile/` | Public creator profile + their challenges |
 | `packages/functions/src/admin/` | Protected admin CRUD endpoints |
 | `packages/functions/src/shared/container.ts` | Dependency wiring (repos → handlers) |
 | `infra/lib/stacks/database-stack.ts` | DynamoDB table + GSI1 + GSI2 |
@@ -221,6 +234,8 @@ cd infra && npx cdk deploy EnduroFrontend
 | Strava token | `RACER#<id>` | `#TOKEN` |
 | Best result | `RESULT#<segmentId>` | `RACER#<racerId>` |
 | Leaderboard entry | `LEADERBOARD#<segId>#<category>` | `RACER#<racerId>` |
+| Creator | `CREATOR#<id>` | `#PROFILE` |
+| Creator username ref | `CREATOR_USERNAME#<username>` | `#REF` |
 
 **GSI1** — string sort, used for racer lookup by Strava athlete ID and result lookup by racer.
 **GSI2** — numeric sort on `elapsedTimeSeconds`, used for sorted leaderboard reads.
